@@ -1,27 +1,17 @@
 # Review
-- Risco 1: Diff vazio – Ausência de mudanças reais impede revisão efetiva de lógica, segurança ou performance; pode indicar erro no processo de submissão ou falta de implementação para o MVP de 4 nós.
-- Risco 2: Falta de testes – Sem diff, não é possível verificar cobertura de testes para cenários distribuídos (ex.: consistência em 4 nós), expondo riscos de bugs em compatibilidade e escalabilidade.
-- Risco 3: Segurança e performance não avaliáveis – Contexto de "MVP 4 nós" sugere sistema distribuído, mas sem código, vulnerabilidades como race conditions ou gargalos de rede não podem ser identificadas.
+- Risco 1: Diff vazio indica ausência de alterações implementadas para o MVP de 4 nós, podendo resultar em falha na escalabilidade ou distribuição de carga (problema de lógica e performance).
+- Risco 2: Sem testes visíveis no diff, há risco de incompatibilidade em cenários multi-nós, como race conditions ou falhas de rede (segurança e compatibilidade não verificadas).
 
 ## Sugestões de patch
-Forneça um diff válido com as mudanças pretendidas para o MVP de 4 nós. Exemplo genérico para adicionar suporte básico a nós (ajuste conforme necessário):
+Adicione implementação básica para suporte a 4 nós, ex.:
 
 ```diff
-diff --git a/src/node_manager.py b/src/node_manager.py
-index 0000000..1111111 100644
---- a/src/node_manager.py
-+++ b/src/node_manager.py
-@@ -1,4 +1,10 @@
- class NodeManager:
-     def __init__(self):
--        self.nodes = []
-+        self.nodes = [f"node{i}" for i in range(4)]  # Suporte a 4 nós no MVP
-+    
-+    def add_node(self, node_id):
-+        if len(self.nodes) < 4:
-+            self.nodes.append(node_id)
-+        else:
-+            raise ValueError("MVP limitado a 4 nós")
- 
- # Adicione testes unitários aqui
++ // Exemplo: Configuração de cluster com 4 nós
++ const nodes = ['node1:8080', 'node2:8080', 'node3:8080', 'node4:8080'];
++ // Lógica de balanceamento de carga aqui
++
++ // Adicione testes unitários
++ test('Cluster de 4 nós distribui requests', () => {
++   // Verificação de distribuição
++ });
 ```

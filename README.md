@@ -4,30 +4,23 @@ A Python project with utilities and CLI tools.
 
 ## Features
 
-- **Greeter**: Simple greeting utility with CLI support
-- **Hello**: Basic hello world module
+### Greeter
 
-## Usage
+A simple greeting utility that can be used as a module or CLI tool.
 
-### Greeter CLI
-
-Run the greeter from command line:
-
-```bash
-python -m src.greeter --name Ana
-```
-
-Output:
-```
-Hello, Ana!
-```
-
-### Greeter in Code
+**Usage as module:**
 
 ```python
 from src.greeter import greet
 
-print(greet("Ana"))  # Hello, Ana!
+print(greet("Ana"))  # Output: Hello, Ana!
+```
+
+**Usage as CLI:**
+
+```bash
+python -m src.greeter --name Ana
+# Output: Hello, Ana!
 ```
 
 ## Testing
@@ -40,4 +33,4 @@ pytest
 
 ## Development
 
-Code follows PEP8 style guidelines.
+Code follows PEP 8 style guidelines.
