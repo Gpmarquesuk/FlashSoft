@@ -1,0 +1,37 @@
+﻿name: vendors-proof
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  vendors-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: python -m pip install -r requirements.txt
+
+      - name: Run proof (4 vendors via OpenRouter)
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+          REQUEST_TIMEOUT_SECONDS: "60"
+        run: python proof_vendors.py
+
+      - name: Upload proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendors-proof-logs
+          path: |
+            logs/*.json
+            logs/VENDORS_PROOF.md
