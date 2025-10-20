@@ -1,0 +1,9 @@
+﻿openai>=1.45.0
+python-dotenv>=1.0.1
+PyGithub>=2.3.0
+GitPython>=3.1.43
+PyYAML>=6.0.2
+tenacity>=8.3.0
+rich>=13.7.1
+pytest>=8.3.3
+requests>=2.32.3

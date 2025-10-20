@@ -1,0 +1,11 @@
+﻿feature: "add hello util and expose CLI"
+acceptance:
+  - running `python -m src.hello` prints "hello"
+  - pytest passes
+changes:
+  summary: "create src/hello.py and update README"
+  constraints:
+    style: "pep8"
+    min_coverage: 0.0
+notes: |
+  Keep it simple. No external deps.
