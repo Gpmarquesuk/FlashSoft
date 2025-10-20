@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Greeter utility module with `greet(name)` function
-- CLI interface for greeter: `python -m src.greeter --name <name>`
-- Tests for greeter functionality and CLI
-- Updated README with greeter documentation
+- Calculator utility module (`src/calc.py`) with `sum(a, b)` function
+- CLI interface for calculator supporting `--a` and `--b` arguments
+- Tests for calculator module in `tests/test_calc.py`
+- Updated README with calculator usage instructions

@@ -4,28 +4,23 @@ A Python project with utilities and CLI tools.
 
 ## Features
 
-### Greeter
+- **Greeter**: Greeting functionality
+- **Hello**: Hello world module
+- **Calculator**: Math utilities with CLI support
 
-A simple greeting utility that can be used as a module or CLI tool.
+## Usage
 
-**Usage as module:**
+### Calculator CLI
 
-```python
-from src.greeter import greet
-
-print(greet("Ana"))  # Output: Hello, Ana!
-```
-
-**Usage as CLI:**
+Run the calculator from command line:
 
 ```bash
-python -m src.greeter --name Ana
-# Output: Hello, Ana!
+python -m src.calc --a 2 --b 3
 ```
 
-## Testing
+This will output: `5`
 
-Run tests with pytest:
+### Running Tests
 
 ```bash
 pytest
@@ -33,4 +28,4 @@ pytest
 
 ## Development
 
-Code follows PEP 8 style guidelines.
+Code follows PEP8 style guidelines.
