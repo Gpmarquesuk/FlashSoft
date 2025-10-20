@@ -29,6 +29,7 @@ def main():
     run_id = new_run_id()
     state = RunState(run_id)
     router = Router()
+    state.log({"event": "router_models", "models": router.models, "fallbacks": router.fallbacks})
 
     workdir = os.getenv("WORKDIR", "/tmp/autobot_work")
     os.makedirs(workdir, exist_ok=True)
