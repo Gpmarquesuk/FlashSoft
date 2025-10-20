@@ -23,9 +23,9 @@ def run_planner_coder(router: Router, repo_path: str, spec_path: str) -> dict:
 {yaml.safe_dump(spec, sort_keys=False)}
 REPO_FILES:
 {json.dumps(file_list, ensure_ascii=False, indent=2)}
-Responda estritamente no JSON exigido.
-"""
-    out = router.call("planner", system, user, max_completion=3000)
+Responda estritamente no JSON exigido."""
+    # Força JSON nativo + parser tolerante
+    out = router.call("planner", system, user, max_completion=3000, force_json=True)
     data = safe_json_extract(out)
-    assert "patches" in data and "test_plan" in data, "JSON invÃ¡lido do PlannerCoder"
+    assert "patches" in data and "test_plan" in data, "JSON inválido do PlannerCoder"
     return data

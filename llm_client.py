@@ -14,9 +14,61 @@ client = OpenAI(api_key=OPENROUTER_API_KEY, base_url=BASE_URL)
 
 def _headers():
     return {
-        "HTTP-Referer": "https://example.com",
+        "HTTP-Referer": "https://github.com/GpmarquesUK/FlashSoft",
         "X-Title": "flashsoft-autobot-mvp"
     }
+
+def _find_json_balanced(s: str):
+    """Encontra o primeiro objeto JSON balanceado."""
+    stack = 0
+    start = None
+    for i, ch in enumerate(s):
+        if ch == "{":
+            if stack == 0:
+                start = i
+            stack += 1
+        elif ch == "}":
+            if stack > 0:
+                stack -= 1
+                if stack == 0 and start is not None:
+                    cand = s[start:i+1]
+                    try:
+                        return json.loads(cand)
+                    except Exception:
+                        pass
+    return None
+
+def safe_json_extract(text: str):
+    """Extrator tolerante: tenta JSON puro, bloco ```json, balanceado, e por fim o maior bloco."""
+    if not text:
+        raise ValueError("Saída vazia")
+    t = text.strip()
+
+    # 1) JSON puro
+    try:
+        return json.loads(t)
+    except Exception:
+        pass
+
+    # 2) bloco ```json ... ```
+    m = re.search(r"```json\s*(.+?)\s*```", t, re.DOTALL | re.IGNORECASE)
+    if m:
+        try:
+            return json.loads(m.group(1))
+        except Exception:
+            pass
+
+    # 3) balanceado
+    obj = _find_json_balanced(t)
+    if obj is not None:
+        return obj
+
+    # 4) primeiro {...} como fallback
+    m = re.search(r"\{.*\}", t, re.DOTALL)
+    if m:
+        return json.loads(m.group(0))
+
+    raise ValueError("Saída sem JSON")
 
 @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential_jitter(1, 4))
 def chat(model: str, system: str, user: str, temperature: float = 0.2, max_tokens: int = 2000) -> str:
@@ -33,8 +85,19 @@ def chat(model: str, system: str, user: str, temperature: float = 0.2, max_token
     )
     return resp.choices[0].message.content
 
-def safe_json_extract(text: str):
-    m = re.search(r"\{.*\}", text, re.DOTALL)
-    if not m:
-        raise ValueError("SaÃ­da sem JSON")
-    return json.loads(m.group(0))
+@retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential_jitter(1, 4))
+def chat_json(model: str, system: str, user: str, temperature: float = 0.0, max_tokens: int = 2000) -> str:
+    """Pede JSON nativo quando suportado (OpenRouter encaminha para os modelos que aceitam)."""
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
+        ],
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format={"type": "json_object"},
+        extra_headers=_headers(),
+        timeout=TIMEOUT
+    )
+    return resp.choices[0].message.content
