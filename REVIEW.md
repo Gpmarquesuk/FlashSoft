@@ -1,17 +1,19 @@
 # Review
-- Risco 1: Diff vazio indica ausência de alterações implementadas para o MVP de 4 nós, podendo resultar em falha na escalabilidade ou distribuição de carga (problema de lógica e performance).
-- Risco 2: Sem testes visíveis no diff, há risco de incompatibilidade em cenários multi-nós, como race conditions ou falhas de rede (segurança e compatibilidade não verificadas).
+- Risco 1: Diff vazio indica ausência de alterações, o que pode mascarar problemas não implementados no MVP de 4 nós, levando a falhas de lógica ou incompatibilidade em clusterização.
+- Risco 2: Falta de testes evidentes; sem diff, não há cobertura para validação de performance ou segurança em cenários multi-nó.
+- Risco 3: Potencial impacto em compatibilidade, pois mudanças em nós (ex.: rede ou estado) não foram auditadas.
 
 ## Sugestões de patch
-Adicione implementação básica para suporte a 4 nós, ex.:
+Verifique e reaplique o diff real. Exemplo de patch mínimo para adicionar log de nós (se aplicável):
 
 ```diff
-+ // Exemplo: Configuração de cluster com 4 nós
-+ const nodes = ['node1:8080', 'node2:8080', 'node3:8080', 'node4:8080'];
-+ // Lógica de balanceamento de carga aqui
+diff --git a/src/cluster.js b/src/cluster.js
+index 0000000..1111111 100644
+--- a/src/cluster.js
++++ b/src/cluster.js
+@@ -1,3 +1,5 @@
+ // Inicialização de 4 nós
++console.log('MVP: 4 nós ativos');
 +
-+ // Adicione testes unitários
-+ test('Cluster de 4 nós distribui requests', () => {
-+   // Verificação de distribuição
-+ });
+ const nodes = Array.from({length: 4}, (_, i) => `node-${i+1}`);
 ```
