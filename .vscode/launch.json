@@ -1,0 +1,12 @@
+﻿{
+  "version": "0.2.0",
+  "configurations": [
+    { "name": "Debug Orchestrator (interview spec)",
+      "type": "python", "request": "launch",
+      "program": "${workspaceFolder}\\\\run_orchestrated.py",
+      "args": ["--spec", "${workspaceFolder}\\\\examples\\\\specs\\\\interview_assistant.yaml", "--branch", "autobot/interview_assistant"],
+      "console": "integratedTerminal",
+      "env": { "REQUEST_TIMEOUT_SECONDS": "60", "MAX_RETRIES_PER_CALL": "2" }
+    }
+  ]
+}

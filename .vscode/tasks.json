@@ -1,0 +1,14 @@
+﻿{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "Run Orchestrator (spec=interview)", "type": "shell",
+      "command": ".\\.venv\\Scripts\\python.exe .\\run_orchestrated.py --spec .\\examples\\specs\\interview_assistant.yaml --branch autobot/interview_assistant",
+      "problemMatcher": [] },
+    { "label": "Tail ORCH out", "type": "shell",
+      "command": "Get-ChildItem .\\logs -Filter ORCH_*_out.txt | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Get-Content $_.FullName -Tail 200 -Wait }",
+      "problemMatcher": [] },
+    { "label": "Tail RUN jsonl", "type": "shell",
+      "command": "Get-ChildItem .\\logs -Filter run-*.jsonl | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Get-Content $_.FullName -Tail 120 -Wait }",
+      "problemMatcher": [] }
+  ]
+}
