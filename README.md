@@ -1,3 +1,9 @@
+﻿# FlashSoft
+
+**Fábrica de Software Autônoma (Spec → Código → Testes → PR)** com agentes multi-modelo, roteamento inteligente, guardrails e observabilidade.
+
+## Objetivo
+Veja **[docs/OBJECTIVE.md](docs/OBJECTIVE.md)** para a missão, escopo, SLOs e diferenciais.
 # Project
 
 A Python project with utilities and CLI tools.
@@ -31,3 +37,4 @@ pytest
 ### Code Style
 
 This project follows PEP8 style guidelines.
+
