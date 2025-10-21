@@ -1,0 +1,19 @@
+{
+  "name": "Alice Smith",
+  "education": "Bachelor of Science in Computer Science, University of Example, 2020",
+  "experience": [
+    {
+      "role": "Software Engineer",
+      "company": "Tech Corp",
+      "duration": "2020 - Present",
+      "description": "Developed scalable web applications using Python and Django. Led a team in implementing AI features for user personalization."
+    },
+    {
+      "role": "Junior Developer",
+      "company": "StartUp Inc",
+      "duration": "2018 - 2020",
+      "description": "Built RESTful APIs and integrated third-party services. Focused on backend optimization and database management with PostgreSQL."
+    }
+  ],
+  "skills": ["Python", "Django", "AI/ML", "PostgreSQL", "Docker"]
+}
