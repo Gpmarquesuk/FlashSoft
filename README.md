@@ -1,40 +1,19 @@
-﻿# FlashSoft
+# Realtime Interview Assistant
 
-**Fábrica de Software Autônoma (Spec → Código → Testes → PR)** com agentes multi-modelo, roteamento inteligente, guardrails e observabilidade.
-
-## Objetivo
-Veja **[docs/OBJECTIVE.md](docs/OBJECTIVE.md)** para a missão, escopo, SLOs e diferenciais.
-# Project
-
-A Python project with utilities and CLI tools.
-
-## Features
-
-- **Greeter**: Greeting functionality
-- **Hello**: Hello world module
-- **Calculator**: Math utilities with CLI support
+## Description
+During online interviews, given a question, combine the question with the candidate resume and the job description to synthesize a concise, high-quality answer and display it on screen.
 
 ## Usage
-
-### Calculator CLI
-
-Run the calculator from command line:
-
 ```bash
-python -m src.calc --a 2 --b 3
+python -m src.interview_assistant --resume data/resume.json --jd data/jd.md --question "Question"
 ```
 
-This will output: `5`
+## Artifacts
+- `artifacts/last_answer.json`: JSON file containing the final answer, talking points, and sources.
+- `artifacts/overlay.html`: HTML file containing the final answer, talking points, and sources.
+- `logs/agent_chat/<run_id>.md`: Markdown file containing the chat log for the run.
 
-## Development
-
-### Running Tests
-
+## Tests
 ```bash
 pytest
 ```
-
-### Code Style
-
-This project follows PEP8 style guidelines.
-
