@@ -1,0 +1,13 @@
+{
+  "question": "Why should we hire you?",
+  "final_answer": "Alex Candidate pode ajudar em 'Why should we hire you?' destacando: Experienced engineer, Built realtime assistants, Integrated resume and job description guidance",
+  "talking_points": [
+    "Experienced engineer",
+    "Built realtime assistants",
+    "Integrated resume and job description guidance"
+  ],
+  "sources": [
+    "resume",
+    "job_description"
+  ]
+}

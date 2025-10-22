@@ -1,0 +1,484 @@
+{
+  "metadata": {
+    "spec": "Realtime Interview Assistant",
+    "created_at": "2025-06-13T10:30:00Z",
+    "architect": "FlashSoft Architect v1.0",
+    "version": "1.0.0",
+    "assumptions": [
+      "OpenRouter API key will be provided via environment variable OPENROUTER_API_KEY",
+      "Resume format is JSON with fields: name, experience, skills, education",
+      "Job description is plain markdown text",
+      "Overlay display uses browser-based HTML rendering as primary method",
+      "Retrieval uses simple TF-IDF or embedding-based ranking without external vector DB",
+      "Windows compatibility requires cross-platform path handling and no Unix-specific dependencies"
+    ]
+  },
+  "components": [
+    {
+      "id": "cli_interface",
+      "description": "Command-line interface that orchestrates the interview assistant workflow, parsing arguments and coordinating other components",
+      "responsibilities": [
+        "Parse command-line arguments for resume path, job description path, and question text",
+        "Validate input file paths and question format",
+        "Coordinate retrieval, answer generation, and overlay display",
+        "Output formatted markdown with sections: Final answer, Talking points, Sources",
+        "Save answer artifact as JSON to artifacts/last_answer.json",
+        "Handle errors gracefully with user-friendly messages"
+      ],
+      "dependencies": [],
+      "files": [
+        {
+          "path": "src/__init__.py",
+          "description": "Package initialization for interview_assistant",
+          "type": "code"
+        },
+        {
+          "path": "src/__main__.py",
+          "description": "Entry point for python -m interview_assistant execution",
+          "type": "code"
+        },
+        {
+          "path": "src/cli.py",
+          "description": "CLI argument parsing and main orchestration logic",
+          "type": "code"
+        },
+        {
+          "path": "src/config.py",
+          "description": "Configuration constants and environment variable handling",
+          "type": "config"
+        }
+      ],
+      "acceptance_tests": [
+        {
+          "id": "cli_basic_execution",
+          "description": "Verify CLI accepts required arguments and produces output",
+          "target_files": [
+            "src/__main__.py",
+            "src/cli.py"
+          ],
+          "success_criteria": "Command executes without error, prints markdown with three sections, creates artifacts/last_answer.json"
+        },
+        {
+          "id": "cli_error_handling",
+          "description": "Verify CLI handles missing files and invalid arguments gracefully",
+          "target_files": [
+            "src/cli.py"
+          ],
+          "success_criteria": "Missing resume/jd files produce clear error messages, invalid arguments show usage help"
+        }
+      ]
+    },
+    {
+      "id": "retrieval_engine",
+      "description": "Local retrieval system that ranks and returns relevant chunks from resume and job description based on the question",
+      "responsibilities": [
+        "Load and parse resume JSON and job description markdown",
+        "Chunk documents into semantically meaningful segments",
+        "Rank chunks by relevance to the input question using local algorithms",
+        "Return top-k ranked chunks with source attribution",
+        "Operate entirely locally without external API calls"
+      ],
+      "dependencies": [],
+      "files": [
+        {
+          "path": "src/retrieval/__init__.py",
+          "description": "Retrieval module initialization",
+          "type": "code"
+        },
+        {
+          "path": "src/retrieval/loader.py",
+          "description": "Document loading and parsing for JSON resume and markdown JD",
+          "type": "code"
+        },
+        {
+          "path": "src/retrieval/chunker.py",
+          "description": "Text chunking logic for creating retrievable segments",
+          "type": "code"
+        },
+        {
+          "path": "src/retrieval/ranker.py",
+          "description": "Ranking algorithm implementation (TF-IDF or embedding-based)",
+          "type": "code"
+        },
+        {
+          "path": "src/retrieval/engine.py",
+          "description": "Main retrieval engine coordinating load, chunk, and rank",
+          "type": "code"
+        }
+      ],
+      "acceptance_tests": [
+        {
+          "id": "retrieval_basic",
+          "description": "Verify retrieval returns ranked chunks for a sample question",
+          "target_files": [
+            "src/retrieval/engine.py"
+          ],
+          "success_criteria": "Given demo resume and JD, retrieval returns 3-5 ranked chunks with relevance scores and source labels"
+        },
+        {
+          "id": "retrieval_chunk_quality",
+          "description": "Verify chunks are semantically coherent and properly attributed",
+          "target_files": [
+            "src/retrieval/chunker.py"
+          ],
+          "success_criteria": "Chunks do not split sentences mid-word, each chunk includes source metadata (resume or jd)"
+        }
+      ]
+    },
+    {
+      "id": "answer_generator",
+      "description": "LLM-powered answer synthesis using OpenRouter API to generate concise interview responses",
+      "responsibilities": [
+        "Accept question, ranked chunks, and context (resume + JD summary)",
+        "Construct prompt for OpenRouter LLM with retrieved context",
+        "Call OpenRouter API and handle responses/errors",
+        "Parse LLM output into structured answer with final answer, talking points, and sources",
+        "Enforce max 120 words for final answer section",
+        "Log all LLM interactions to logs/agent_chat/<run_id>.md"
+      ],
+      "dependencies": [
+        "retrieval_engine"
+      ],
+      "files": [
+        {
+          "path": "src/generator/__init__.py",
+          "description": "Answer generator module initialization",
+          "type": "code"
+        },
+        {
+          "path": "src/generator/llm_client.py",
+          "description": "OpenRouter API client with request/response handling",
+          "type": "code"
+        },
+        {
+          "path": "src/generator/prompt_builder.py",
+          "description": "Prompt construction logic combining question and context",
+          "type": "code"
+        },
+        {
+          "path": "src/generator/answer_parser.py",
+          "description": "Parse LLM output into structured answer format",
+          "type": "code"
+        },
+        {
+          "path": "src/generator/chat_logger.py",
+          "description": "Log LLM conversations to markdown files",
+          "type": "code"
+        }
+      ],
+      "acceptance_tests": [
+        {
+          "id": "answer_shape",
+          "description": "Verify generated answer has correct structure and word limits",
+          "target_files": [
+            "src/generator/answer_parser.py"
+          ],
+          "success_criteria": "Answer contains 'Final answer' (<=120 words), 'Talking points' (list), 'Sources' (list with attributions)"
+        },
+        {
+          "id": "llm_api_integration",
+          "description": "Verify OpenRouter API calls succeed with valid responses",
+          "target_files": [
+            "src/generator/llm_client.py"
+          ],
+          "success_criteria": "API client successfully calls OpenRouter, handles 200 responses, raises clear errors on failures"
+        },
+        {
+          "id": "chat_logging",
+          "description": "Verify all LLM interactions are logged to markdown",
+          "target_files": [
+            "src/generator/chat_logger.py"
+          ],
+          "success_criteria": "Each run creates logs/agent_chat/<run_id>.md with timestamped prompt and response"
+        }
+      ]
+    },
+    {
+      "id": "overlay_display",
+      "description": "Display system that renders the generated answer in an overlay window or HTML file",
+      "responsibilities": [
+        "Accept structured answer data (final answer, talking points, sources)",
+        "Generate HTML overlay file at artifacts/overlay.html",
+        "Optionally display overlay as topmost window if supported",
+        "Provide fallback to HTML file if topmost window unavailable",
+        "Ensure cross-platform compatibility (Windows-friendly)",
+        "Auto-refresh overlay content when new answer is generated"
+      ],
+      "dependencies": [
+        "answer_generator"
+      ],
+      "files": [
+        {
+          "path": "src/overlay/__init__.py",
+          "description": "Overlay display module initialization",
+          "type": "code"
+        },
+        {
+          "path": "src/overlay/html_generator.py",
+          "description": "Generate HTML overlay from answer data",
+          "type": "code"
+        },
+        {
+          "path": "src/overlay/window_manager.py",
+          "description": "Manage topmost window display (with fallback logic)",
+          "type": "code"
+        },
+        {
+          "path": "src/overlay/templates/overlay_template.html",
+          "description": "HTML template for overlay rendering",
+          "type": "asset"
+        }
+      ],
+      "acceptance_tests": [
+        {
+          "id": "overlay_html_generation",
+          "description": "Verify HTML overlay file is created with correct content",
+          "target_files": [
+            "src/overlay/html_generator.py"
+          ],
+          "success_criteria": "artifacts/overlay.html exists, contains answer sections in readable HTML format"
+        },
+        {
+          "id": "overlay_fallback",
+          "description": "Verify fallback to HTML file when topmost window unavailable",
+          "target_files": [
+            "src/overlay/window_manager.py"
+          ],
+          "success_criteria": "If topmost window fails, system falls back to HTML file without crashing"
+        }
+      ]
+    },
+    {
+      "id": "data_models",
+      "description": "Data structures and schemas for resume, job description, question, and answer artifacts",
+      "responsibilities": [
+        "Define JSON schema for resume structure",
+        "Define data classes for Question, Answer, Chunk, and Source",
+        "Provide serialization/deserialization for artifacts/last_answer.json",
+        "Validate input data formats",
+        "Ensure type safety across components"
+      ],
+      "dependencies": [],
+      "files": [
+        {
+          "path": "src/models/__init__.py",
+          "description": "Data models module initialization",
+          "type": "code"
+        },
+        {
+          "path": "src/models/resume.py",
+          "description": "Resume data model and JSON schema",
+          "type": "code"
+        },
+        {
+          "path": "src/models/answer.py",
+          "description": "Answer, TalkingPoint, and Source data models",
+          "type": "code"
+        },
+        {
+          "path": "src/models/retrieval.py",
+          "description": "Chunk and RetrievalResult data models",
+          "type": "code"
+        }
+      ],
+      "acceptance_tests": [
+        {
+          "id": "model_serialization",
+          "description": "Verify models serialize to/from JSON correctly",
+          "target_files": [
+            "src/models/answer.py"
+          ],
+          "success_criteria": "Answer model serializes to JSON matching artifacts/last_answer.json schema, deserializes without data loss"
+        },
+        {
+          "id": "resume_validation",
+          "description": "Verify resume JSON validation catches malformed data",
+          "target_files": [
+            "src/models/resume.py"
+          ],
+          "success_criteria": "Invalid resume JSON (missing required fields) raises clear validation error"
+        }
+      ]
+    },
+    {
+      "id": "demo_data",
+      "description": "Sample resume and job description files for testing and demonstration",
+      "responsibilities": [
+        "Provide realistic sample resume in JSON format",
+        "Provide realistic sample job description in markdown format",
+        "Ensure demo data covers common interview scenarios",
+        "Support acceptance test execution"
+      ],
+      "dependencies": [],
+      "files": [
+        {
+          "path": "data/resume.json",
+          "description": "Sample candidate resume with name, experience, skills, education",
+          "type": "asset",
+          "generated": false
+        },
+        {
+          "path": "data/jd.md",
+          "description": "Sample job description in markdown format",
+          "type": "asset",
+          "generated": false
+        }
+      ],
+      "acceptance_tests": [
+        {
+          "id": "demo_data_validity",
+          "description": "Verify demo data files are valid and loadable",
+          "target_files": [
+            "data/resume.json",
+            "data/jd.md"
+          ],
+          "success_criteria": "Resume JSON parses correctly, JD markdown loads without errors"
+        }
+      ]
+    },
+    {
+      "id": "test_suite",
+      "description": "Pytest-based test suite covering retrieval, answer generation, and overlay functionality",
+      "responsibilities": [
+        "Implement unit tests for retrieval engine",
+        "Implement unit tests for answer generation and parsing",
+        "Implement integration tests for CLI workflow",
+        "Implement tests for overlay fallback behavior",
+        "Achieve coverage of critical paths",
+        "Provide test fixtures and mocks for LLM API"
+      ],
+      "dependencies": [
+        "retrieval_engine",
+        "answer_generator",
+        "overlay_display"
+      ],
+      "files": [
+        {
+          "path": "tests/__init__.py",
+          "description": "Test package initialization",
+          "type": "test"
+        },
+        {
+          "path": "tests/conftest.py",
+          "description": "Pytest fixtures and configuration",
+          "type": "test"
+        },
+        {
+          "path": "tests/test_retrieval.py",
+          "description": "Tests for retrieval engine and ranking",
+          "type": "test"
+        },
+        {
+          "path": "tests/test_generator.py",
+          "description": "Tests for answer generation and LLM client",
+          "type": "test"
+        },
+        {
+          "path": "tests/test_overlay.py",
+          "description": "Tests for overlay HTML generation and fallback",
+          "type": "test"
+        },
+        {
+          "path": "tests/test_cli.py",
+          "description": "Integration tests for CLI interface",
+          "type": "test"
+        },
+        {
+          "path": "tests/fixtures/sample_resume.json",
+          "description": "Test fixture resume data",
+          "type": "asset"
+        },
+        {
+          "path": "tests/fixtures/sample_jd.md",
+          "description": "Test fixture job description",
+          "type": "asset"
+        }
+      ],
+      "acceptance_tests": [
+        {
+          "id": "pytest_execution",
+          "description": "Verify all tests pass with pytest",
+          "target_files": [
+            "tests/test_retrieval.py",
+            "tests/test_generator.py",
+            "tests/test_overlay.py"
+          ],
+          "success_criteria": "pytest runs without errors, all required tests (retrieval_basic, answer_shape, overlay_fallback) pass"
+        },
+        {
+          "id": "test_coverage",
+          "description": "Verify test coverage meets minimum threshold",
+          "target_files": [
+            "tests/"
+          ],
+          "success_criteria": "Code coverage for src/ exceeds 70%, critical paths fully covered"
+        }
+      ]
+    },
+    {
+      "id": "project_infrastructure",
+      "description": "Project configuration, dependencies, documentation, and build scripts",
+      "responsibilities": [
+        "Define Python dependencies with version constraints",
+        "Provide installation and usage instructions",
+        "Configure pytest and code quality tools",
+        "Ensure Windows compatibility in setup",
+        "Document OpenRouter API key setup",
+        "Provide example commands and workflows"
+      ],
+      "dependencies": [],
+      "files": [
+        {
+          "path": "pyproject.toml",
+          "description": "Python project configuration with dependencies and metadata",
+          "type": "config"
+        },
+        {
+          "path": "requirements.txt",
+          "description": "Pinned dependencies for reproducible installs",
+          "type": "config"
+        },
+        {
+          "path": "README.md",
+          "description": "Project overview, installation, usage, and examples",
+          "type": "doc"
+        },
+        {
+          "path": ".gitignore",
+          "description": "Git ignore patterns for Python projects",
+          "type": "config"
+        },
+        {
+          "path": "pytest.ini",
+          "description": "Pytest configuration",
+          "type": "config"
+        },
+        {
+          "path": ".env.example",
+          "description": "Example environment variables file",
+          "type": "config"
+        }
+      ],
+      "acceptance_tests": [
+        {
+          "id": "installation_success",
+          "description": "Verify project installs cleanly on Windows and Unix",
+          "target_files": [
+            "pyproject.toml",
+            "requirements.txt"
+          ],
+          "success_criteria": "pip install -e . completes without errors, all dependencies resolve"
+        },
+        {
+          "id": "documentation_completeness",
+          "description": "Verify README covers all essential setup and usage steps",
+          "target_files": [
+            "README.md"
+          ],
+          "success_criteria": "README includes installation, API key setup, example command, and troubleshooting sections"
+        }
+      ]
+    }
+  ],
+  "notes": "Architecture prioritizes modularity and testability. Retrieval engine is fully local to avoid external dependencies. LLM integration is isolated in answer_generator for easy mocking in tests. Overlay display provides graceful fallback from topmost window to HTML file. All file paths use pathlib for cross-platform compatibility. Demo data and test fixtures ensure immediate usability and validation."
+}

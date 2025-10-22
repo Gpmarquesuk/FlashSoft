@@ -1,0 +1,7 @@
+{
+    "name": "John Doe",
+    "experience": [
+        {"company": "Tech Corp", "role": "Software Engineer", "years": 3}
+    ],
+    "skills": ["Python", "JavaScript"]
+}
