@@ -1,0 +1,90 @@
+feature: "Realtime Interview Assistant"
+goal: |
+  Build a realtime companion for job interviews that listens to the live conversation,
+  transcreve o udio em tempo quase-real (latncia percebida < 500 ms por turno),
+  cruza a pergunta com currculo (PDF/DOCX) e job description (PDF/DOCX), gera uma resposta
+  focada, estruturada e exibida em um overlay invisvel para os entrevistadores.
+
+acceptance:
+  - audio_stream:
+      runtime: windows
+      capture: "microphone default"
+      transcription: whisper_api
+      chunk_seconds: 1.0
+      latency_budget_ms: 500
+  - documents:
+      formats:
+        - pdf
+        - docx
+      output_schema: "resume: sections(list of string); job_description: requirements(list of string)"
+  - retrieval:
+      vector_store: local
+      embeddings: sentence_transformer
+      min_recall_points: 5
+  - generation:
+      llm: openrouter
+      response_format:
+        json: true
+        max_words_final: 120
+  - overlay:
+      mode: topmost_window
+      hotkeys:
+        toggle: "Ctrl+Alt+Space"
+        mark_addressed: "Ctrl+Alt+Enter"
+      opacity: 0.85
+      answer_contract:
+        max_final_words: 45
+        max_talking_point_words: 12
+        language: en
+  - user_interface:
+      responsive_breakpoints:
+        - { width: 1024, height: 768 }
+        - { width: 1366, height: 768 }
+        - { width: 1920, height: 1080 }
+      requirements:
+        - alt_hotkeys: ["Alt+S", "Alt+G", "Alt+E"]
+        - ascii_labels_only: true
+        - scrollable_panels: ["transcription", "latest_answer"]
+      automation:
+        playwright_suite: true
+        vision_validation: true
+  - observability:
+      logs:
+        transcript: logs/live_transcript.jsonl
+        agent_chat: logs/agent_chat/<run_id>.md
+      metrics:
+        - latency_transcription_ms
+        - latency_generation_ms
+        - overlay_refresh_ms
+        - whisper_405_count
+        - ui_hotkey_missing
+  - cli:
+      command: 'python -m interview_assistant --resume examples/manual_inputs/Resume-Gustavo-Marques Sep25.docx --jd examples/manual_inputs/Technical Application &amp_ Integration Specialist .pdf --audio-file examples/manual_inputs/captura_wasapi_autodetect.wav --auto-from-audio --headless-overlay --question "Tell me about a challenge"'
+      outputs:
+        artifact_json: artifacts/qa_tmp/last_answer.json
+        overlay_html: artifacts/qa_tmp/overlay.html
+        audio_buffer_dir: artifacts/audio_chunks
+  - tests:
+      pytest: true
+      must_cover:
+        - audio_stream_latency
+        - document_parsing_pdf_docx
+        - retrieval_accuracy
+        - overlay_hotkey_behavior
+        - cli_end_to_end_with_real_wav
+        - ui_component_hotkeys
+        - ui_visual_regression
+
+constraints:
+  openrouter_only: true
+  windows_friendly: true
+  realtime_mandatory: true
+  style: "PEP8"
+
+notes: |
+  - A aplicao deve consumir udio do microfone e enviar chunks para Whisper (via OpenRouter) em streaming.
+  - O parsing de documentos deve lidar com PDFs com tabelas e DOCX com sees; extrair habilidades e requisitos.
+  - Use armazenamento local (ex.: FAISS, LanceDB ou similar) para retrieval offline.
+  - O overlay precisa ser discreto, topmost e com hotkeys configurveis.
+  - Registrar todos os eventos (latncia por etapa, chunks processados, respostas enviadas).
+  - Garantir tratamento de falhas: se Whisper/API atrasar, fazer retry exponencial e notificar superviso.

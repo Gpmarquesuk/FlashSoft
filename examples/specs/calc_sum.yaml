@@ -1,0 +1,11 @@
+﻿feature: "add calc util with sum(a,b) and CLI"
+acceptance:
+  - running python -m src.calc --a 2 --b 3 prints "5"
+  - pytest passes
+changes:
+  summary: "create src/calc.py with sum(a,b) and CLI; update README"
+  constraints:
+    style: "pep8"
+    min_coverage: 0.0
+notes: |
+  Provide full files (not diffs). Keep it simple, no external deps.

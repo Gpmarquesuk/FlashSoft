@@ -1,0 +1,612 @@
+# Estratgia Robusta para Convergncia do Pipeline FlashSoft
+
+## Diagnstico do Problema Central
+
+O pipeline atual sofre de **trs falhas sistmicas**:
+1. **Validao insuficiente** (JSON malformado passa adiante)
+2. **Contexto fragmentado** (cada agente no v o estado completo)
+3. **Feedback loop ineficaz** (retry cego sem aprendizado)
+
+---
+
+## Arquitetura Proposta: Pipeline em Camadas com Guardrails
+
+```
+Spec  [Decomposer]  Tasks Queue
+                
+    
+       LAYER 1: PLANNING       
+      Planner  Validator     
+      Schema Enforcer          
+    
+                
+    
+       LAYER 2: IMPLEMENTATION 
+      Coder  Syntax Checker  
+      Dependency Resolver      
+    
+                
+    
+       LAYER 3: VERIFICATION   
+      Tester  QA  Fixer     
+      Integration Validator    
+    
+                
+         [Supervisor]  Release
+```
+
+---
+
+## Passos Concretos de Implementao
+
+### **FASE 1: Fortalecer Validao de Sada (Semana 1)**
+
+#### 1.1 JSON Schema Enforcer (Agente Dedicado)
+```python
+# Inserir ANTES de cada n consumir output
+class SchemaEnforcer:
+    def validate_and_repair(self, raw_output, expected_schema):
+        # 1. Tentar parse direto
+        try:
+            data = json.loads(raw_output)
+            jsonschema.validate(data, expected_schema)
+            return data
+        except:
+            pass
+        
+        # 2. Reparos automticos
+        repaired = self._auto_fix(raw_output)
+        
+        # 3. LLM repair com schema injection
+        if not repaired:
+            repaired = self._llm_repair(raw_output, expected_schema)
+        
+        # 4. Fallback estruturado
+        return repaired or self._safe_default(expected_schema)
+    
+    def _auto_fix(self, text):
+        # Adicionar vrgulas faltantes
+        # Fechar strings truncadas
+        # Balancear chaves/colchetes
+        # Remover trailing commas
+        ...
+    
+    def _llm_repair(self, broken_json, schema):
+        prompt = f"""
+        JSON INVLIDO:
+        {broken_json}
+        
+        SCHEMA ESPERADO:
+        {json.dumps(schema, indent=2)}
+        
+        RETORNE APENAS o JSON vlido corrigido, sem explicaes.
+        Se faltar informao, use valores padro razoveis.
+        """
+        # Usar modelo rpido (gpt-4o-mini) para economia
+```
+
+#### 1.2 Prompts com Formato Forado
+```python
+PLANNER_PROMPT = """
+Voc DEVE retornar EXATAMENTE este formato JSON:
+
+```json
+{
+  "tasks": [
+    {
+      "id": "string",
+      "description": "string",
+      "dependencies": ["string"],
+      "files": ["string"]
+    }
+  ]
+}
+```
+
+REGRAS CRTICAS:
+- Sempre feche todas as strings com aspas duplas
+- Sempre coloque vrgula entre elementos de array
+- No truncar no meio de uma string
+- Validar JSON antes de enviar
+
+SPEC: {spec}
+
+JSON:
+"""
+```
+
+#### 1.3 Streaming Parser
+```python
+# Para modelos que truncam, processar tokens incrementalmente
+class StreamingJSONParser:
+    def parse_partial(self, token_stream):
+        buffer = ""
+        for token in token_stream:
+            buffer += token
+            if self._is_potentially_complete(buffer):
+                try:
+                    return json.loads(buffer)
+                except:
+                    continue
+        # Se stream acabou incompleto, tentar reparar
+        return self._complete_json(buffer)
+```
+
+---
+
+### **FASE 2: Decomposio Hierrquica de Tarefas (Semana 1-2)**
+
+#### 2.1 Decomposer Agent (Novo N Inicial)
+```python
+class TaskDecomposer:
+    """
+    Quebra spec em tarefas atmicas com critrios de aceitao
+    """
+    def decompose(self, spec):
+        prompt = f"""
+        Decomponha esta spec em tarefas ATMICAS (1 arquivo por tarefa):
+        
+        {spec}
+        
+        Para cada tarefa, defina:
+        1. Arquivo alvo (ex: src/stt/whisper_handler.py)
+        2. Dependncias (outros arquivos necessrios)
+        3. Critrio de aceitao (teste especfico)
+        4. Complexidade (1-5)
+        
+        Ordene por dependncias (DAG).
+        """
+        
+        tasks = self._call_llm(prompt)
+        
+        # Validar DAG (sem ciclos)
+        if self._has_cycles(tasks):
+            tasks = self._resolve_cycles(tasks)
+        
+        return tasks
+```
+
+#### 2.2 Execuo Incremental
+```python
+# Em vez de gerar tudo de uma vez:
+for task in sorted_tasks:
+    context = self._build_context(task, completed_tasks)
+    
+    # Gerar apenas este arquivo
+    code = planner.generate_file(task, context)
+    
+    # Validar imediatamente
+    if not self._validate_syntax(code):
+        code = self._fix_syntax(code, task)
+    
+    # Testar isoladamente
+    if not self._unit_test_passes(code, task):
+        code = self._fix_logic(code, task)
+    
+    completed_tasks.append(task)
+```
+
+---
+
+### **FASE 3: Agentes Auxiliares Especializados (Semana 2)**
+
+#### 3.1 Syntax Checker (Ps-Coder)
+```python
+class SyntaxChecker:
+    def check(self, code, language="python"):
+        issues = []
+        
+        # AST parsing
+        try:
+            ast.parse(code)
+        except SyntaxError as e:
+            issues.append(f"Syntax error line {e.lineno}: {e.msg}")
+        
+        # Linters
+        issues += self._run_ruff(code)
+        issues += self._run_mypy(code)
+        
+        # Verificaes customizadas
+        issues += self._check_imports(code)
+        issues += self._check_fstrings(code)
+        
+        return issues
+    
+    def _check_fstrings(self, code):
+        # Detectar f-strings truncadas
+        pattern = r'f"[^"]*$'  # f-string sem fechamento
+        matches = re.findall(pattern, code)
+        return [f"F-string truncada: {m}" for m in matches]
+```
+
+#### 3.2 Dependency Resolver (Ps-Syntax)
+```python
+class DependencyResolver:
+    def resolve(self, code, project_structure):
+        imports = self._extract_imports(code)
+        
+        issues = []
+        for imp in imports:
+            # Verificar se mdulo existe no projeto
+            if not self._module_exists(imp, project_structure):
+                issues.append(f"Mdulo no encontrado: {imp}")
+            
+            # Verificar se est em requirements.txt
+            if self._is_external(imp):
+                if not self._in_requirements(imp):
+                    self._add_to_requirements(imp)
+        
+        return issues
+    
+    def _extract_imports(self, code):
+        tree = ast.parse(code)
+        imports = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.extend(n.name for n in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imports.append(node.module)
+        return imports
+```
+
+#### 3.3 Test Validator (Pr-QA)
+```python
+class TestValidator:
+    def validate(self, test_code, implementation_code):
+        issues = []
+        
+        # Extrair funes chamadas nos testes
+        test_calls = self._extract_function_calls(test_code)
+        
+        # Extrair funes definidas na implementao
+        impl_functions = self._extract_definitions(implementation_code)
+        
+        # Verificar se todas as chamadas existem
+        for call in test_calls:
+            if call not in impl_functions:
+                issues.append(f"Teste chama funo inexistente: {call}")
+        
+        return issues
+```
+
+---
+
+### **FASE 4: Feedback Loop Inteligente (Semana 3)**
+
+#### 4.1 Error Context Accumulator
+```python
+class ErrorContext:
+    def __init__(self):
+        self.history = []
+    
+    def add_attempt(self, code, errors, fixes_tried):
+        self.history.append({
+            "code": code,
+            "errors": errors,
+            "fixes": fixes_tried,
+            "timestamp": datetime.now()
+        })
+    
+    def get_learning_prompt(self):
+        """Gera prompt com histrico de erros"""
+        return f"""
+        TENTATIVAS ANTERIORES QUE FALHARAM:
+        
+        {self._format_history()}
+        
+        PADRES DE ERRO DETECTADOS:
+        {self._detect_patterns()}
+        
+        Evite repetir estes erros. Foque em:
+        {self._suggest_focus_areas()}
+        """
+    
+    def _detect_patterns(self):
+        # Anlise de erros recorrentes
+        error_types = Counter()
+        for attempt in self.history:
+            for error in attempt["errors"]:
+                error_types[self._classify_error(error)] += 1
+        
+        return error_types.most_common(3)
+```
+
+#### 4.2 Supervisor com Estratgias Adaptativas
+```python
+class AdaptiveSupervisor:
+    def decide_action(self, task, error_context, attempt_num):
+        if attempt_num == 1:
+            return "retry_with_examples"
+        
+        elif attempt_num == 2:
+            # Mudar estratgia baseado no tipo de erro
+            error_pattern = error_context.detect_patterns()[0]
+            
+            if "syntax" in error_pattern:
+                return "use_syntax_focused_model"  # Modelo melhor em cdigo
+            elif "logic" in error_pattern:
+                return "add_step_by_step_reasoning"
+            elif "dependency" in error_pattern:
+                return "regenerate_with_full_context"
+        
+        elif attempt_num == 3:
+            # Simplificar tarefa
+            return "break_into_smaller_subtasks"
+        
+        else:
+            # Escalar para modelo superior
+            return "escalate_to_premium_model"
+```
+
+---
+
+### **FASE 5: Verificaes em Camadas (Semana 3-4)**
+
+#### 5.1 Pipeline de Validao Progressiva
+```python
+class ValidationPipeline:
+    def validate(self, code, task):
+        checks = [
+            ("JSON Schema", self.schema_enforcer),
+            ("Syntax", self.syntax_checker),
+            ("Dependencies", self.dependency_resolver),
+            ("Test Alignment", self.test_validator),
+            ("Unit Tests", self.unit_test_runner),
+            ("Integration", self.integration_tester),
+            ("QA Funcional", self.qa_runner)
+        ]
+        
+        results = {}
+        for name, checker in checks:
+            result = checker.check(code, task)
+            results[name] = result
+            
+            # Parar no primeiro erro crtico
+            if result.is_critical_failure():
+                return self._trigger_fix(name, result, code, task)
+        
+        return results
+```
+
+#### 5.2 Fixer Agent (Especializado por Tipo de Erro)
+```python
+class SpecializedFixer:
+    def fix(self, code, error_type, error_details):
+        fixers = {
+            "syntax": self._fix_syntax,
+            "import": self._fix_imports,
+            "test_mismatch": self._fix_test_alignment,
+            "fstring": self._fix_fstrings,
+            "package": self._fix_package_structure
+        }
+        
+        fixer = fixers.get(error_type, self._generic_fix)
+        return fixer(code, error_details)
+    
+    def _fix_syntax(self, code, details):
+        prompt = f"""
+        Cdigo com erro de sintaxe:
+        ```python
+        {code}
+        ```
+        
+        Erro: {details}
+        
+        Retorne APENAS o cdigo corrigido, sem explicaes.
+        Mantenha toda a lgica original.
+        """
+        # Usar modelo rpido para fixes simples
+        
+    def _fix_test_alignment(self, test_code, impl_code, missing_functions):
+        prompt = f"""
+        Testes chamam funes que no existem: {missing_functions}
+        
+        Implementao atual:
+        ```python
+        {impl_code}
+        ```
+        
+        Adicione as funes faltantes com implementao bsica.
+        """
+```
+
+---
+
+### **FASE 6: Coordenao e Estado Compartilhado (Semana 4)**
+
+#### 6.1 Shared Context Store
+```python
+class ProjectContext:
+    def __init__(self):
+        self.files = {}  # path -> cdigo
+        self.dependencies = {}  # arquivo -> [dependncias]
+        self.test_results = {}
+        self.error_history = ErrorContext()
+    
+    def get_context_for_task(self, task):
+        """Monta contexto relevante para uma tarefa"""
+        context = {
+            "task": task,
+            "related_files": self._get_dependencies(task),
+            "previous_errors": self.error_history.get_relevant(task),
+            "project_structure": self._get_structure(),
+            "requirements": self._get_requirements()
+        }
+        return context
+    
+    def update_after_completion(self, task, code, tests):
+        self.files[task.file] = code
+        self.test_results[task.file] = tests
+        self._update_dependency_graph(task, code)
+```
+
+#### 6.2 Prompt Enrichment
+```python
+def enrich_prompt(base_prompt, task, context):
+    """Adiciona contexto relevante ao prompt"""
+    enriched = f"""
+    CONTEXTO DO PROJETO:
+    Estrutura: {context['project_structure']}
+    Arquivos relacionados: {context['related_files']}
+    
+    ERROS ANTERIORES A EVITAR:
+    {context['previous_errors']}
+    
+    TAREFA ATUAL:
+    {task}
+    
+    {base_prompt}
+    
+    CHECKLIST ANTES DE RESPONDER:
+     JSON vlido (validar com jsonlint mental)
+     Imports corretos (verificar se mdulos existem)
+     F-strings completas (verificar fechamento)
+     Testes alinhados (funes chamadas existem)
+     Pacote correto (verificar estrutura de diretrios)
+    """
+    return enriched
+```
+
+---
+
+## Configurao de Modelos Otimizada
+
+```python
+MODEL_STRATEGY = {
+    "decomposer": "anthropic/claude-3.5-sonnet",  # Raciocnio complexo
+    "planner": "openai/gpt-4-turbo",
+    "coder": "anthropic/claude-3.5-sonnet",
+    "syntax_checker": "local/ruff",  # No precisa LLM
+    "fixer": "openai/gpt-4o-mini",  # Rpido para fixes
+    "tester": "openai/gpt-4-turbo",
+    "supervisor": "openai/gpt-4.5-preview",  # Decises crticas
+    "schema_enforcer": "openai/gpt-4o-mini"  # Tarefa simples
+}
+
+# Fallback chain
+FALLBACK_CHAIN = [
+    "primary_model",
+    "retry_with_temperature_0",  # Mais determinstico
+    "alternative_provider",
+    "simpler_model_with_examples"
+]
+```
+
+---
+
+## Mtricas de Convergncia
+
+```python
+class ConvergenceMetrics:
+    def track(self):
+        return {
+            "json_validity_rate": self._json_success_rate(),
+            "syntax_pass_rate": self._syntax_success_rate(),
+            "test_pass_rate": self._test_success_rate(),
+            "avg_retries_per_task": self._avg_retries(),
+            "tasks_completed": len(self.completed_tasks),
+            "tasks_blocked": len(self.blocked_tasks),
+            "time_to_convergence": self._time_elapsed()
+        }
+    
+    def is_converging(self):
+        metrics = self.track()
+        return (
+            metrics["json_validity_rate"] > 0.95 and
+            metrics["syntax_pass_rate"] > 0.90 and
+            metrics["avg_retries_per_task"] < 2
+        )
+```
+
+---
+
+## Plano de Rollout (4 Semanas)
+
+**Semana 1:**
+- Implementar SchemaEnforcer e StreamingJSONParser
+- Adicionar SyntaxChecker e DependencyResolver
+- Atualizar prompts com formato forado
+
+**Semana 2:**
+- Implementar TaskDecomposer
+- Criar ErrorContext e histrico de tentativas
+- Adicionar TestValidator
+
+**Semana 3:**
+- Implementar AdaptiveSupervisor
+- Criar SpecializedFixer para cada tipo de erro
+- Adicionar ValidationPipeline
+
+**Semana 4:**
+- Implementar ProjectContext compartilhado
+- Integrar todos os componentes
+- Testar com caso real (mdulo STT Whisper)
+- Ajustar baseado em mtricas
+
+---
+
+## Exemplo de Fluxo Completo
+
+```python
+# 1. Decomposio
+tasks = decomposer.decompose(spec)  # [task1, task2, task3...]
+
+# 2. Para cada tarefa
+for task in tasks:
+    context = project_context.get_context_for_task(task)
+    attempt = 0
+    
+    while attempt < 3:
+        # 2.1 Planejamento
+        plan = planner.plan(task, context)
+        plan = schema_enforcer.validate(plan, PLAN_SCHEMA)
+        
+        # 2.2 Codificao
+        code = coder.generate(plan, context)
+        
+        # 2.3 Validao em camadas
+        syntax_issues = syntax_checker.check(code)
+        if syntax_issues:
+            code = fixer.fix(code, "syntax", syntax_issues)
+        
+        dep_issues = dependency_resolver.check(code)
+        if dep_issues:
+            code = fixer.fix(code, "import", dep_issues)
+        
+        # 2.4 Testes
+        tests = tester.generate_tests(code, task)
+        test_issues = test_validator.validate(tests, code)
+        if test_issues:
+            code = fixer.fix(code, "test_mismatch", test_issues)
+        
+        # 2.5 Execuo
+        result = qa_runner.run(code, tests)
+        
+        if result.success:
+            project_context.update(task, code, tests)
+            break
+        else:
+            # 2.6 Feedback inteligente
+            error_context.add_attempt(code, result.errors, attempt)
+            action = supervisor.decide_action(task, error_context, attempt)
+            context = self._apply_action(action, context)
+            attempt += 1
+
+# 3. Integrao final
+integration_result = qa_runner.run_integration_tests()
+if integration_result.success:
+    release.deploy()
+```
+
+---
+
+## Resultado Esperado
+
+Com esta arquitetura:
+- **JSON vlido**: 98%+ (SchemaEnforcer + streaming parser)
+- **Sintaxe correta**: 95%+ (SyntaxChecker + Fixer)
+- **Testes passando**: 90%+ (TestValidator + alinhamento)
+- **Convergncia**: 2-3 iteraes em mdia (vs. atual que no converge)
+- **MVP completo**: 1-2 dias para mdulo mdio (vs. atual que no entrega)
+
+A chave  **validar cedo e frequentemente**, com **agentes especializados** e **feedback contextual acumulado**.
