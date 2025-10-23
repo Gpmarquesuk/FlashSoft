@@ -46,8 +46,15 @@ def run_planner_coder(
         system = f.read()
 
     # SIMPLIFICADO: Apenas spec essencial + lista CURTA de arquivos
+    # Truncar spec em última linha completa (não no meio de YAML)
+    spec_lines = spec_dump.splitlines()
+    if len(spec_lines) > 15:  # Primeiras 15 linhas apenas (nome + 3-4 features típicas)
+        spec_summary = '\n'.join(spec_lines[:15]) + '\n...(resto truncado)'
+    else:
+        spec_summary = spec_dump
+    
     base_user_parts = [
-        f"SPEC (RESUMO):\n{spec_dump[:800]}...",  # TRUNCADO: primeiros 800 chars apenas
+        f"SPEC:\n{spec_summary}",
         f"ARQUIVOS ALVO:\n{json.dumps(file_list[:3], ensure_ascii=False, indent=2)}",  # LIMITADO: 3 arquivos apenas
     ]
     # TASK_PLAN REMOVIDO: evitar overflow adicional
