@@ -9,20 +9,28 @@ function Ensure-GitHubEnv {
     [string]$RepoVar = "GITHUB_REPO_FULL"
   )
 
-  if (-not $env:$TokenVar -or $env:$TokenVar -eq '') {
+  $tokenValue = $null
+  if (Test-Path env:$TokenVar) {
+    $tokenValue = (Get-Item env:$TokenVar).Value
+  }
+  if (-not $tokenValue) {
     try {
       $token = (& 'C:\Program Files\GitHub CLI\gh.exe' auth token 2>$null).Trim()
-      if ($token) { $env:$TokenVar = $token }
+      if ($token) {
+        Set-Item -Path env:$TokenVar -Value $token
+      }
     } catch {}
   }
 
-  if (-not $env:$RepoVar -or $env:$RepoVar -eq '') {
+  $repoValue = $null
+  if (Test-Path env:$RepoVar) {
+    $repoValue = (Get-Item env:$RepoVar).Value
+  }
+  if (-not $repoValue) {
     try {
-      $repoInfo = git remote get-url origin 2>$null
-      if ($repoInfo) {
-        if ($repoInfo -match "github.com[:/](.+?)(\.git)?$") {
-          $env:$RepoVar = $Matches[1]
-        }
+      $remoteUrl = git remote get-url origin 2>$null
+      if ($remoteUrl -match "github.com[:/](.+?)(\.git)?$") {
+        Set-Item -Path env:$RepoVar -Value $Matches[1]
       }
     } catch {}
   }
