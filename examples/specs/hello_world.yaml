@@ -1,0 +1,9 @@
+name: hello-world
+description: Simple hello world script for testing factory infrastructure
+
+features:
+  - name: print-message
+    description: Print "Hello, World!" to console
+    acceptance:
+      - Script executes without errors
+      - Output contains "Hello, World!"
