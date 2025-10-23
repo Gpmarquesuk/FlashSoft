@@ -1,0 +1,43 @@
+{
+  "consultation_id": "json_flexibility_ai2ai",
+  "timestamp": "2025-10-23T15:30:00Z",
+  "context": {
+    "problem": "Planner está falhando porque gera JSON inválido (vírgulas faltando, aspas mal escapadas)",
+    "current_behavior": "Pipeline aborta após 3 tentativas com erro 'Expecting comma delimiter'",
+    "system_architecture": "AI-to-AI communication: Planner → Tester → QA → Reviewer (todos são LLMs)",
+    "user_insight": "Quem vai usar é outro modelo de IA que tem muita flexibilidade a erros"
+  },
+  "questions": [
+    {
+      "id": "Q1",
+      "question": "Em um sistema AI-to-AI onde o Planner (LLM) gera patches e o Tester (LLM) os consome, é necessário validação JSON estrita? Ou podemos usar extração fuzzy (regex, heurísticas) confiando que o LLM downstream vai interpretar corretamente?",
+      "rationale": "LLMs modernos conseguem entender JSON malformado e extrair intenção semântica"
+    },
+    {
+      "id": "Q2",
+      "question": "Qual a taxa de falha aceitável em JSON parsing antes de abortar? Atualmente falhamos em 3 tentativas. Devemos tentar 10x com extração progressivamente mais tolerante?",
+      "rationale": "Custo de abortar (zero output) vs custo de tentar mais vezes (mais tokens)"
+    },
+    {
+      "id": "Q3",
+      "question": "Devemos implementar um 'JSON Sanitizer Agent' que recebe a resposta malformada e a reformata antes de passar adiante? Ou isso adiciona complexidade desnecessária?",
+      "rationale": "Um agente especializado em limpeza pode ser mais eficiente que múltiplas tentativas"
+    },
+    {
+      "id": "Q4",
+      "question": "Em vez de force_json=True (que adiciona pressão estrutural), devemos permitir que o Planner retorne markdown com blocos ```json``` e extrair manualmente? Isso daria mais liberdade ao modelo?",
+      "rationale": "Modelos frequentemente geram melhor JSON quando não forçados por schema"
+    },
+    {
+      "id": "Q5",
+      "question": "Se o Tester receber patches com pequenos erros (ex: vírgula faltando), ele consegue corrigir automaticamente antes de aplicar? Ou isso geraria bugs silenciosos?",
+      "rationale": "Auto-healing pode mascarar problemas ou pode ser a solução ideal para AI-to-AI"
+    }
+  ],
+  "desired_outcomes": [
+    "Redução de falhas do Planner de 100% para <10%",
+    "Aumento de robustez sem sacrificar qualidade",
+    "Princípio: 'Be liberal in what you accept, conservative in what you send'",
+    "Manter rastreabilidade: se corrigirmos JSON, logar a correção"
+  ]
+}

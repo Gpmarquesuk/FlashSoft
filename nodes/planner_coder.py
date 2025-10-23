@@ -4,6 +4,7 @@ from pathlib import Path
 import yaml
 
 from llm_client import safe_json_extract
+from json_sanitizer import safe_json_extract_v2
 from router import Router
 
 TOKEN_THRESHOLD_SPEC = 500_000
@@ -53,7 +54,7 @@ def run_planner_coder(
     base_user = "\n".join(base_user_parts)
 
     last_error = ''
-    for attempt in range(3):
+    for attempt in range(10):  # Aumentado de 3 para 10 tentativas
         user = base_user
         if last_error:
             user += (
@@ -61,8 +62,8 @@ def run_planner_coder(
                 f'Erro capturado: {last_error}. Garanta que a resposta esteja em JSON valido.'
             )
         try:
-            out = router.call('planner', system, user, max_completion=3000, force_json=True)
-            data = safe_json_extract(out)
+            out = router.call('planner', system, user, max_completion=3000, force_json=False)  # force_json=False para permitir markdown
+            data = safe_json_extract_v2(out, expected_keys=['patches', 'test_plan'])  # Usa novo sanitizer
             assert 'patches' in data and 'test_plan' in data, 'JSON invalido do PlannerCoder'
             return data
         except Exception as exc:
@@ -72,4 +73,4 @@ def run_planner_coder(
                 next_model = committee[attempt + 1]
                 router.promote_model('planner', next_model, reason='planner_json_error')
 
-    raise RuntimeError(f'Planner falhou apos 3 tentativas: {last_error or "erro desconhecido"}')
+    raise RuntimeError(f'Planner falhou apos 10 tentativas: {last_error or "erro desconhecido"}')

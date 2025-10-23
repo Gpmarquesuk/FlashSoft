@@ -8,3 +8,4 @@ Formato:
 Regras:
 - Procure problemas de lÃ³gica, seguranÃ§a, compatibilidade e performance.
 - Sinalize onde faltam testes.
+

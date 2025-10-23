@@ -29,3 +29,4 @@
 - Inclua testes positivos e negativos.
 - Utilize `pytest` puro, sem frameworks proprietários.
 - Nenhum texto fora do JSON.
+
