@@ -32,25 +32,26 @@ def run_planner_coder(
             reason=f'spec_tokens>{TOKEN_THRESHOLD_SPEC}',
         )
 
+    # SOLUÇÃO GPT-5 CODEX: Processar 1 arquivo por vez para evitar Context Window Overflow
     file_list: list[str] = []
     for path in Path(repo_path).rglob('*.py'):
         rel = str(path.relative_to(repo_path))
         if rel.startswith('.venv') or rel.startswith('.git'):
             continue
-        if len(file_list) > 60:
+        if len(file_list) > 5:  # REDUZIDO: 60 -> 5 arquivos max (anti-overflow)
             break
         file_list.append(rel)
 
     with open('prompts/planner_coder.md', 'r', encoding='utf-8') as f:
         system = f.read()
 
+    # SIMPLIFICADO: Apenas spec essencial + lista CURTA de arquivos
     base_user_parts = [
-        f"SPEC:\n{spec_dump}",
-        f"REPO_FILES:\n{json.dumps(file_list, ensure_ascii=False, indent=2)}",
+        f"SPEC (RESUMO):\n{spec_dump[:800]}...",  # TRUNCADO: primeiros 800 chars apenas
+        f"ARQUIVOS ALVO:\n{json.dumps(file_list[:3], ensure_ascii=False, indent=2)}",  # LIMITADO: 3 arquivos apenas
     ]
-    if task_plan:
-        base_user_parts.append(f"TASK_BREAKDOWN:\n{json.dumps(task_plan, ensure_ascii=False, indent=2)}")
-    base_user_parts.append("Responda estritamente no JSON exigido.")
+    # TASK_PLAN REMOVIDO: evitar overflow adicional
+    base_user_parts.append("Responda SOMENTE com JSON: {\"patches\": [...], \"test_plan\": [...]}")
     base_user = "\n".join(base_user_parts)
 
     last_error = ''
