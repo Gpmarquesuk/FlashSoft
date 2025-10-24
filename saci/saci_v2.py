@@ -53,10 +53,11 @@ from numpy.linalg import norm
 import numpy as np
 
 # ============================================================================
-# CONFIGURAÇÃO OFICIAL DA SACI v2.1
+# CONFIGURAÇÃO DE MODELOS
 # ============================================================================
 
-SACI_MODELS = {
+# Modelos de Produção (Pagos)
+SACI_MODELS_PROD = {
     'claude': {
         'id': 'anthropic/claude-sonnet-4.5',
         'name': 'Claude Sonnet 4.5'
@@ -75,6 +76,26 @@ SACI_MODELS = {
     }
 }
 
+# Modelos de Debug (Gratuitos)
+SACI_MODELS_FREE = {
+    'claude': {
+        'id': 'deepseek/deepseek-chat-v3.1:free',
+        'name': 'DeepSeek Chat (Free)'
+    },
+    'codex': {
+        'id': 'qwen/qwen-2.5-coder-32b-instruct:free',
+        'name': 'Qwen Coder (Free)'
+    },
+    'gemini': {
+        'id': 'tngtech/deepseek-r1t2-chimera:free',
+        'name': 'Chimera (Free)'
+    },
+    'grok': {
+        'id': 'mistralai/mistral-7b-instruct:free',
+        'name': 'Mistral 7B (Free)'
+    }
+}
+
 DELAY_BETWEEN_CALLS = 2  # segundos
 SEMANTIC_CONVERGENCE_THRESHOLD = 0.85  # Threshold de similaridade de cosseno
 
@@ -87,14 +108,29 @@ def debate_saci_v2(
     contexto: str = "",
     max_rodadas: int = 3,
     output_dir: str = "logs",
-    verbose: bool = True
+    verbose: bool = True,
+    debug_mode: bool = False
 ) -> Dict:
     """
     Executa um debate SACI v2.1 completo com análise semântica.
+    
+    Args:
+        problema: Questão/problema a ser debatido.
+        contexto: Contexto adicional relevante.
+        max_rodadas: Número máximo de rodadas de debate.
+        output_dir: Diretório para salvar logs.
+        verbose: Imprimir progresso no console.
+        debug_mode: Se True, usa modelos gratuitos para depuração.
+        
+    Returns:
+        Dict com o resultado completo do debate.
     """
+    
+    saci_models = SACI_MODELS_FREE if debug_mode else SACI_MODELS_PROD
+    
     if verbose:
         print("\n" + "="*80)
-        print("🚀 SACI v2.1 (EVOLUÍDA) - DEBATE INICIADO")
+        print(f"🚀 SACI v2.1 (EVOLUÍDA) - DEBATE INICIADO {'(MODO DEBUG)' if debug_mode else ''}")
         print("="*80)
         print(f"\n📋 Problema: {problema[:100]}...")
         print(f"🎯 Convergência Semântica: {SEMANTIC_CONVERGENCE_THRESHOLD*100}%")
@@ -114,7 +150,7 @@ def debate_saci_v2(
         
         # 1. Coletar respostas
         prompt = _build_prompt(problema, contexto, historico)
-        respostas = _collect_responses(prompt, verbose)
+        respostas = _collect_responses(prompt, verbose, saci_models)
         
         rodada_data = {
             'numero': rodada_num,
@@ -125,6 +161,10 @@ def debate_saci_v2(
         
         # 2. Análise de Convergência
         try:
+            if debug_mode:
+                # No modo debug, não usamos embeddings pagos
+                raise ValueError("Análise semântica desativada em modo debug.")
+
             convergence_score, all_embeddings = _calculate_semantic_convergence(respostas)
             rodada_data['analise_convergencia'] = {
                 'score': convergence_score,
@@ -151,7 +191,7 @@ def debate_saci_v2(
                 'votos': votos,
                 'metodo': 'keyword_fallback'
             }
-            consenso_atingido, solucao_final = _check_consensus_fallback(votos, 0.75, respostas)
+            consenso_atingido, solucao_final = _check_consensus_fallback(votos, 0.75, respostas, len(saci_models))
             if verbose:
                 print(f"📊 Votos (Fallback): {votos}")
             if consenso_atingido:
@@ -169,7 +209,8 @@ def debate_saci_v2(
         'solucao_final': solucao_final,
         'rodadas': historico,
         'timestamp': datetime.now().isoformat(),
-        'versao': '2.1'
+        'versao': '2.1',
+        'debug_mode': debug_mode
     }
     
     log_filename = f"{output_dir}/saci_v2_debate_{int(time.time())}.json"
@@ -189,10 +230,10 @@ def debate_saci_v2(
 # FUNÇÕES DE LÓGICA DE DEBATE
 # ============================================================================
 
-def _collect_responses(prompt: str, verbose: bool) -> Dict:
+def _collect_responses(prompt: str, verbose: bool, saci_models: Dict) -> Dict:
     """Coleta respostas de todos os modelos SACI."""
     respostas = {}
-    for model_key, model_info in SACI_MODELS.items():
+    for model_key, model_info in saci_models.items():
         if verbose:
             print(f"⏳ Consultando {model_info['name']}...")
         try:
@@ -222,7 +263,7 @@ def _collect_responses(prompt: str, verbose: bool) -> Dict:
         time.sleep(DELAY_BETWEEN_CALLS)
     return respostas
 
-def _calculate_semantic_convergence(respostas: Dict) -> (float, Dict):
+def _calculate_semantic_convergence(respostas: Dict) -> tuple[float, Dict]:
     """Gera embeddings e calcula a similaridade de cosseno média."""
     embeddings = {}
     valid_responses = [r['response'] for r in respostas.values() if r['success'] and r['response']]
@@ -307,14 +348,14 @@ def _extract_votes_fallback(respostas: Dict) -> Dict:
         votos[model_key] = voto
     return votos
 
-def _check_consensus_fallback(votos: Dict, threshold: float, respostas: Dict) -> tuple:
+def _check_consensus_fallback(votos: Dict, threshold: float, respostas: Dict, total_modelos: int) -> tuple:
     """Fallback para checar consenso por votos, igual à v1.0."""
     if not votos: return False, None
     contagem = {}
     for voto in votos.values(): contagem[voto] = contagem.get(voto, 0) + 1
     
-    total_votos = len([v for v in votos.values() if v != 'unclear'])
-    if total_votos == 0: return False, None
+    total_votos_validos = len([v for v in votos.values() if v != 'unclear'])
+    if total_votos_validos == 0: return False, None
 
     voto_majoritario = max(contagem, key=contagem.get)
     if voto_majoritario == 'unclear' and len(contagem) > 1:
@@ -323,8 +364,8 @@ def _check_consensus_fallback(votos: Dict, threshold: float, respostas: Dict) ->
 
     qtd_majoritaria = contagem.get(voto_majoritario, 0)
     
-    if (qtd_majoritaria / total_votos) >= threshold:
-        solucao = f"Consenso (Fallback): {voto_majoritario} ({qtd_majoritaria}/{total_votos})"
+    if (qtd_majoritaria / total_modelos) >= threshold:
+        solucao = f"Consenso (Fallback): {voto_majoritario} ({qtd_majoritaria}/{total_modelos})"
         return True, solucao
     
     return False, None

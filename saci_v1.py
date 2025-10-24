@@ -58,10 +58,11 @@ from typing import Dict, List, Optional
 from llm_client import chat
 
 # ============================================================================
-# CONFIGURAÇÃO OFICIAL DA SACI v1.0
+# CONFIGURAÇÃO DE MODELOS
 # ============================================================================
 
-SACI_MODELS = {
+# Modelos de Produção (Pagos)
+SACI_MODELS_PROD = {
     'claude': {
         'id': 'anthropic/claude-sonnet-4.5',
         'name': 'Claude Sonnet 4.5',
@@ -84,6 +85,30 @@ SACI_MODELS = {
     }
 }
 
+# Modelos de Debug (Gratuitos)
+SACI_MODELS_FREE = {
+    'claude': {
+        'id': 'deepseek/deepseek-chat-v3.1:free',
+        'name': 'DeepSeek Chat (Free)',
+        'specialty': 'System architecture, technical analysis'
+    },
+    'codex': {
+        'id': 'qwen/qwen-2.5-coder-32b-instruct:free',
+        'name': 'Qwen Coder (Free)',
+        'specialty': 'Code design, implementation patterns'
+    },
+    'gemini': {
+        'id': 'tngtech/deepseek-r1t2-chimera:free',
+        'name': 'Chimera (Free)',
+        'specialty': 'Strategic analysis, trade-off evaluation'
+    },
+    'grok': {
+        'id': 'mistralai/mistral-7b-instruct:free',
+        'name': 'Mistral 7B (Free)',
+        'specialty': 'Critical thinking, edge case analysis'
+    }
+}
+
 DELAY_BETWEEN_CALLS = 2  # segundos
 
 # ============================================================================
@@ -96,34 +121,33 @@ def debate_saci(
     max_rodadas: int = 3,
     threshold_consenso: float = 0.75,
     output_dir: str = "logs",
-    verbose: bool = True
+    verbose: bool = True,
+    debug_mode: bool = False
 ) -> Dict:
     """
     Executa um debate SACI v1.0 completo.
     
     Args:
-        problema: Questão/problema a ser debatido
-        contexto: Contexto adicional relevante
-        max_rodadas: Número máximo de rodadas de debate
-        threshold_consenso: % de concordância necessária (0.75 = 3/4)
-        output_dir: Diretório para salvar logs
-        verbose: Imprimir progresso no console
+        problema: Questão/problema a ser debatido.
+        contexto: Contexto adicional relevante.
+        max_rodadas: Número máximo de rodadas de debate.
+        threshold_consenso: % de concordância necessária (0.75 = 3/4).
+        output_dir: Diretório para salvar logs.
+        verbose: Imprimir progresso no console.
+        debug_mode: Se True, usa modelos gratuitos para depuração.
         
     Returns:
-        Dict com:
-        - consenso: bool (True se atingiu consenso)
-        - solucao_final: str (solução consensual ou síntese)
-        - votos: Dict (distribuição de votos)
-        - rodadas: List (histórico completo)
-        - timestamp: str
+        Dict com o resultado completo do debate.
     """
+    
+    saci_models = SACI_MODELS_FREE if debug_mode else SACI_MODELS_PROD
     
     if verbose:
         print("\n" + "="*80)
-        print("🧠 SACI v1.0 - DEBATE INICIADO")
+        print(f"🧠 SACI v1.0 - DEBATE INICIADO {'(MODO DEBUG)' if debug_mode else ''}")
         print("="*80)
         print(f"\n📋 Problema: {problema[:100]}...")
-        print(f"🎯 Threshold: {threshold_consenso*100}% ({int(threshold_consenso*4)}/4 modelos)")
+        print(f"🎯 Threshold: {threshold_consenso*100}% ({int(threshold_consenso*len(saci_models))}/{len(saci_models)} modelos)")
         print(f"🔄 Max rodadas: {max_rodadas}\n")
     
     os.makedirs(output_dir, exist_ok=True)
@@ -152,7 +176,7 @@ def debate_saci(
             prompt = _build_followup_prompt(problema, contexto, historico)
         
         # Consultar cada modelo
-        for model_key, model_info in SACI_MODELS.items():
+        for model_key, model_info in saci_models.items():
             if verbose:
                 print(f"⏳ Consultando {model_info['name']}...")
             
@@ -188,7 +212,7 @@ def debate_saci(
                 }
             
             # Delay entre chamadas
-            if model_key != list(SACI_MODELS.keys())[-1]:
+            if model_key != list(saci_models.keys())[-1]:
                 time.sleep(DELAY_BETWEEN_CALLS)
         
         historico.append(rodada_data)
@@ -198,7 +222,8 @@ def debate_saci(
         consenso_atingido, solucao_final = _check_consensus(
             votos, 
             threshold_consenso,
-            rodada_data['respostas']
+            rodada_data['respostas'],
+            len(saci_models)
         )
         
         if verbose:
@@ -316,43 +341,47 @@ def _extract_votes(respostas: Dict) -> Dict:
         
         voto = "unclear"
         
-        # Padrão 1: "VOTE: X" ou "VOTO: X" (com ou sem **)
-        import re
-        patterns = [
-            r'\*\*vote:\s*([a-e])\*\*',  # **VOTE: B**
-            r'\*\*voto:\s*([a-e])\*\*',  # **VOTO: B**
-            r'vote:\s*([a-e])(?:\s|$|\n)',  # VOTE: B (seguido de espaço/fim)
-            r'voto:\s*([a-e])(?:\s|$|\n)',  # VOTO: B (seguido de espaço/fim)
-            r'##\s+voto\s+final[^\n]*\n+\*\*voto:\s*([a-e])\*\*',  # Markdown header + voto
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, response_lower)
-            if match:
-                voto = match.group(1).upper()
-                break
-        
-        # Se não encontrou, buscar "vote X" ou "voto X" apenas no início de linhas
-        if voto == "unclear":
-            lines = response_lower.split('\n')
-            for line in lines:
-                line = line.strip()
-                # Linhas que começam com "vote" ou "voto"
-                if line.startswith('vote') or line.startswith('voto') or line.startswith('**vote') or line.startswith('**voto'):
-                    # Buscar primeira letra A-E nessa linha
-                    for char in line:
-                        if char in 'abcde':
-                            voto = char.upper()
+        try:
+            # Padrão 1: "VOTE: X" ou "VOTO: X" (com ou sem **)
+            import re
+            patterns = [
+                r'\*\*vote:\s*([a-e])\*\*',  # **VOTE: B**
+                r'\*\*voto:\s*([a-e])\*\*',  # **VOTO: B**
+                r'vote:\s*([a-e])(?:\s|$|\n)',  # VOTE: B (seguido de espaço/fim)
+                r'voto:\s*([a-e])(?:\s|$|\n)',  # VOTO: B (seguido de espaço/fim)
+                r'##\s+voto\s+final[^\n]*\n+\*\*voto:\s*([a-e])\*\*',  # Markdown header + voto
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, response_lower)
+                if match:
+                    voto = match.group(1).upper()
+                    break
+            
+            # Se não encontrou, buscar "vote X" ou "voto X" apenas no início de linhas
+            if voto == "unclear":
+                lines = response_lower.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    # Linhas que começam com "vote" ou "voto"
+                    if line.startswith('vote') or line.startswith('voto') or line.startswith('**vote') or line.startswith('**voto'):
+                        # Buscar primeira letra A-E nessa linha
+                        for char in line:
+                            if char in 'abcde':
+                                voto = char.upper()
+                                break
+                        if voto != "unclear":
                             break
-                    if voto != "unclear":
-                        break
+        except Exception:
+            # Se qualquer erro ocorrer durante o parsing, o voto é "unclear"
+            voto = "unclear"
         
         votos[model_key] = voto
     
     return votos
 
 
-def _check_consensus(votos: Dict, threshold: float, respostas: Dict) -> tuple:
+def _check_consensus(votos: Dict, threshold: float, respostas: Dict, total_modelos: int) -> tuple:
     """
     Verifica se houve consenso.
     
@@ -367,15 +396,22 @@ def _check_consensus(votos: Dict, threshold: float, respostas: Dict) -> tuple:
     for voto in votos.values():
         contagem[voto] = contagem.get(voto, 0) + 1
     
-    total_votos = len(votos)
+    total_votos_validos = len([v for v in votos.values() if v != "unclear"])
+    if total_votos_validos == 0:
+        return False, None
+
     voto_majoritario = max(contagem, key=contagem.get)
+    if voto_majoritario == 'unclear' and len(contagem) > 1:
+        del contagem['unclear']
+        voto_majoritario = max(contagem, key=contagem.get)
+
     qtd_majoritaria = contagem[voto_majoritario]
     
-    percentual = qtd_majoritaria / total_votos
+    percentual = qtd_majoritaria / total_modelos
     
     if percentual >= threshold:
         # Consenso atingido - sintetizar solução
-        solucao = f"Consenso: {voto_majoritario} ({qtd_majoritaria}/{total_votos} votos = {percentual*100:.0f}%)"
+        solucao = f"Consenso: {voto_majoritario} ({qtd_majoritaria}/{total_modelos} votos = {percentual*100:.0f}%)"
         
         # Adicionar justificativas dos modelos que votaram pela opção vencedora
         for model_key, voto in votos.items():
@@ -392,16 +428,17 @@ def _check_consensus(votos: Dict, threshold: float, respostas: Dict) -> tuple:
 # FUNÇÕES AUXILIARES
 # ============================================================================
 
-def verificar_saci_disponivel() -> Dict[str, bool]:
+def verificar_saci_disponivel(debug_mode: bool = False) -> Dict[str, bool]:
     """
     Verifica se todos os modelos da SACI estão disponíveis.
     
     Returns:
         Dict com status de cada modelo
     """
+    saci_models = SACI_MODELS_FREE if debug_mode else SACI_MODELS_PROD
     status = {}
     
-    for model_key, model_info in SACI_MODELS.items():
+    for model_key, model_info in saci_models.items():
         try:
             # Teste rápido com prompt mínimo
             response = chat(
@@ -423,11 +460,12 @@ def get_saci_info() -> Dict:
     """Retorna informações sobre a SACI v1.0."""
     return {
         'versao': '1.0',
-        'modelos': SACI_MODELS,
+        'modelos_producao': SACI_MODELS_PROD,
+        'modelos_debug': SACI_MODELS_FREE,
         'threshold_consenso': 0.75,
         'descricao': 'Sistema Avançado de Convergência de Ideias - Versão estável',
-        'proxima_versao': '2.0 (SACI EVOLUÍDA - em desenvolvimento)',
-        'quando_migrar': 'Apenas quando v2.0 demonstrar superioridade comprovada'
+        'proxima_versao': '2.1 (SACI EVOLUÍDA - com embeddings)',
+        'quando_migrar': 'Apenas quando v2.1 demonstrar superioridade comprovada'
     }
 
 
