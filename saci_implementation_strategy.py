@@ -13,6 +13,7 @@ DELIVERABLES:
 """
 
 import os
+import sys
 import json
 import time
 from datetime import datetime
@@ -28,29 +29,29 @@ if not api_key:
 if not api_key:
     raise RuntimeError("OPENROUTER_API_KEY não encontrada!")
 
-print(f"✓ API Key carregada")
+print("[OK] API Key carregada")
 
-# 4 especialistas (MODELOS ATUALIZADOS conforme solicitação)
+# 4 especialistas (MODELOS CORRETOS - Claude Sonnet 4.5 + Grok 4 garantido)
 AGENTS = {
-    'claude_thinker': {
-        'id': 'anthropic/claude-opus-4.5:thinking',
-        'name': 'Claude 4.5 Thinker (Opus)',
-        'specialty': 'Raciocínio profundo, análise estratégica'
+    'claude_sonnet': {
+        'id': 'anthropic/claude-sonnet-4.5',
+        'name': 'Claude Sonnet 4.5',
+        'specialty': 'Raciocínio profundo, análise estratégica de alto nível'
     },
     'gpt5_codex': {
         'id': 'openai/gpt-5-codex',
         'name': 'GPT-5 Codex',
-        'specialty': 'Implementação técnica, código de produção'
+        'specialty': 'Implementação técnica detalhada, código de produção'
     },
     'gemini': {
         'id': 'google/gemini-2.5-pro',
         'name': 'Gemini 2.5 PRO',
-        'specialty': 'Visão de mercado, benchmarking'
+        'specialty': 'Visão de mercado, benchmarking competitivo'
     },
     'grok': {
         'id': 'x-ai/grok-4',
         'name': 'Grok 4',
-        'specialty': 'Perspectiva disruptiva, go-to-market'
+        'specialty': 'Perspectiva disruptiva, análise go-to-market crítica'
     }
 }
 
@@ -76,113 +77,33 @@ CONSENSO: SACI é FEATURE (não produto), mas vale POC de 3 semanas.
 # RODADA 1: Estratégia de Implementação
 PROMPT_ROUND1 = f"""{CONTEXT_PREVIOUS}
 
-# RODADA 1: ESTRATÉGIA DE IMPLEMENTAÇÃO DETALHADA
+# RODADA 1: METODOLOGIA DE IMPLEMENTAÇÃO
 
-## CONTEXTO
-O debate anterior concluiu que SACI deve ser HYBRID (LangGraph + AutoGen + custom layer).
-Agora precisamos definir **COMO** implementar isso na prática.
+Defina metodologia step-by-step para implementar SACI HYBRID (LangGraph + AutoGen + custom layer).
 
-## SUA TAREFA: METODOLOGIA DE IMPLEMENTAÇÃO
+## RESPONDA:
 
-Crie uma **metodologia detalhada step-by-step** para implementar SACI HYBRID.
+**1. ARQUITETURA (200 palavras)**
+- Módulos/classes principais
+- Organização de pastas
+- Interfaces entre componentes
 
-### PARTE A: Arquitetura Técnica Detalhada
+**2. STACK TÉCNICO (100 palavras)**
+- Versões (LangGraph, AutoGen, sentence-transformers)
 
-1. **Estrutura de Módulos:**
-   - Quais arquivos/classes criar?
-   - Organização de pastas (`saci/`, `tests/`, etc)?
-   - Interfaces entre componentes?
+**3. CUSTOM LAYER (~300 linhas)**
+- ConvergenceDetector: Input List[str] → Output ConvergenceMetrics
+- MetricsAggregator: Combinar 3 métricas → threshold 75%
+- RoundOrchestrator: Gerenciar rounds
 
-2. **Dependências e Stack:**
-   - Versões exatas (LangGraph 0.x.x, AutoGen 0.x.x)?
-   - Bibliotecas adicionais (sentence-transformers, scikit-learn)?
-   - Configuração de ambiente (venv, requirements.txt)?
+**4. ROADMAP 3 SEMANAS (150 palavras)**
+- Semana 1: Foundation
+- Semana 2: Core
+- Semana 3: Validação
 
-3. **Integração LangGraph + AutoGen:**
-   - Como AutoGen agents se conectam aos LangGraph nodes?
-   - State management (quais campos no StateGraph)?
-   - Error handling e retries?
+**5. RISCOS + MITIGAÇÕES (150 palavras)**
 
-### PARTE B: Implementação do Custom Layer
-
-**ConvergenceDetector** (~100 linhas):
-- Input: List[str] (respostas dos 4 agentes)
-- Output: ConvergenceMetrics (similarity, vote_alignment, critique_severity)
-- Método: `is_converged() -> bool`
-- Modelos NLP: qual sentence-transformer usar? (all-MiniLM-L6-v2? mpnet-base?)
-
-**MetricsAggregator** (~100 linhas):
-- Combinar 3 métricas (semântica, votos, críticas)
-- Threshold: 2 de 3 >= 75%
-- Logging de métricas (MLflow? Weights & Biases?)
-
-**RoundOrchestrator** (~100 linhas):
-- Gerenciar 5 rounds (ou 3, dado que meta-debate provou 5 é over-engineering?)
-- Conditional edges: convergiu? → vote : refinement
-- Context management (evitar context window overflow)
-
-### PARTE C: Roadmap de Implementação (3 Semanas)
-
-**Semana 1: Foundation**
-- Dia 1-2: Setup (LangGraph + AutoGen instalação, hello world)
-- Dia 3-4: ConvergenceDetector básico (cosine similarity apenas)
-- Dia 5: Integração LangGraph StateGraph com 3 nós (Propose → Critique → Vote)
-
-**Semana 2: Core Features**
-- Dia 6-7: MetricsAggregator (adicionar votos + críticas)
-- Dia 8-9: RoundOrchestrator (loop de 3 rounds)
-- Dia 10: Testes unitários (pytest, cobertura >= 80%)
-
-**Semana 3: Validação**
-- Dia 11-13: 10 debates reais (decisões arquiteturais)
-- Dia 14: Análise GO/NO-GO (métricas de sucesso)
-- Dia 15: Relatório final + decisão de produtização
-
-### PARTE D: Análise de Riscos
-
-1. **Riscos Técnicos:**
-   - LangGraph + AutoGen incompatibilidade?
-   - Sentence-transformers lento para convergência?
-   - Context overflow em debates longos?
-
-2. **Mitigações:**
-   - Versões específicas testadas?
-   - Caching de embeddings?
-   - Truncamento inteligente de contexto?
-
-## FORMATO DE RESPOSTA
-
-```markdown
-# METODOLOGIA DE IMPLEMENTAÇÃO SACI
-
-## 1. ARQUITETURA
-[Diagrama/descrição de módulos]
-
-## 2. STACK TÉCNICO
-- LangGraph: [versão]
-- AutoGen: [versão]
-- Outros: [lista]
-
-## 3. CUSTOM LAYER (pseudo-código)
-```python
-class ConvergenceDetector:
-    def check(self, responses: List[str]) -> ConvergenceMetrics:
-        # [implementação detalhada]
-```
-
-## 4. ROADMAP (3 semanas)
-Semana 1: [detalhar]
-Semana 2: [detalhar]
-Semana 3: [detalhar]
-
-## 5. RISCOS E MITIGAÇÕES
-[lista]
-
-## 6. ESTIMATIVA DE ESFORÇO
-[horas/pessoa, complexidade]
-```
-
-Máximo: 2000 tokens.
+Max 1200 palavras total.
 """
 
 # RODADA 2: Críticas às Metodologias
@@ -395,8 +316,8 @@ CONFIANÇA: [0-100%]
 Máximo: 2500 tokens.
 """
 
-def consult_agent(agent_key: str, agent_info: dict, prompt: str, round_num: int) -> tuple:
-    """Consulta um agente em uma rodada específica"""
+def consult_agent(agent_key: str, agent_info: dict, prompt: str, round_num: int, max_retries: int = 3) -> tuple:
+    """Consulta um agente em uma rodada específica com RETRY OBRIGATÓRIO"""
     agent_id = agent_info['id']
     agent_name = agent_info['name']
     
@@ -406,38 +327,81 @@ def consult_agent(agent_key: str, agent_info: dict, prompt: str, round_num: int)
     print(f"   Specialty: {agent_info['specialty']}")
     print(f"{'='*80}\n")
     
-    start_time = time.time()
-    
     system_prompt = f"""You are {agent_name}, a specialist in {agent_info['specialty']}.
 You are participating in a SACI debate about implementation strategy and market impact.
 Be deeply technical, analytical, and strategic. Provide actionable insights."""
     
-    try:
-        print(f"⏳ Enviando prompt (rodada {round_num})...")
-        
-        # Ajustar max_tokens por rodada
-        max_tokens_map = {1: 2000, 2: 2500, 3: 2500}
-        
-        response = chat(
-            model=agent_id,
-            system=system_prompt,
-            user=prompt,
-            max_tokens=max_tokens_map.get(round_num, 2000),
-            temperature=0.2  # Baixo para análise técnica
-        )
-        
-        elapsed = time.time() - start_time
-        
-        input_tokens = (len(system_prompt) + len(prompt)) // 4
-        output_tokens = len(response) // 4
-        
-        print(f"✓ Resposta recebida! ({elapsed:.1f}s, ~{output_tokens} tokens)")
-        
-        return True, response, elapsed, input_tokens, output_tokens
-        
-    except Exception as e:
-        print(f"❌ ERRO: {e}")
-        return False, str(e), 0, 0, 0
+    # MAX_TOKENS POR MODELO - VALORES MÁXIMOS PARA RESPOSTAS COMPLETAS
+    # Claude Sonnet 3.5: 8192 output tokens
+    # GPT-4o: 4096 output tokens
+    # Gemini 1.5 Pro: 8192 output tokens
+    # Grok-1: 8192 output tokens
+    model_max_tokens = {
+        'anthropic/claude-sonnet-4.5': 8192,
+        'openai/gpt-5-codex': 4096,
+        'google/gemini-2.5-pro': 8192,
+        'x-ai/grok-4': 8192
+    }
+    
+    max_tokens = model_max_tokens.get(agent_id, 8000)  # Default 8000
+    
+    # RETRY LOOP - GARANTE RESPOSTA OU FALHA EXPLÍCITA
+    for attempt in range(1, max_retries + 1):
+        try:
+            if attempt > 1:
+                print(f"⚠️  RETRY {attempt}/{max_retries} para {agent_name}...")
+                time.sleep(5 * attempt)  # Backoff progressivo
+            else:
+                print(f"⏳ Enviando prompt (rodada {round_num}) - max_tokens={max_tokens}...")
+            
+            start_time = time.time()
+            
+            response = chat(
+                model=agent_id,
+                system=system_prompt,
+                user=prompt,
+                max_tokens=max_tokens,  # USAR MÁXIMO DO MODELO!
+                temperature=0.2  # Baixo para análise técnica
+            )
+            
+            elapsed = time.time() - start_time
+            
+            # Validar resposta não vazia
+            if not response or len(response.strip()) < 100:
+                raise ValueError(f"Resposta muito curta: {len(response)} chars")
+            
+            input_tokens = (len(system_prompt) + len(prompt)) // 4
+            output_tokens = len(response) // 4
+            
+            print(f"✓ Resposta recebida! ({elapsed:.1f}s, ~{output_tokens} tokens)")
+            
+            return True, response, elapsed, input_tokens, output_tokens
+            
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"❌ ERRO (tentativa {attempt}/{max_retries}):")
+            print(f"   Modelo: {agent_id}")
+            print(f"   Tipo: {type(e).__name__}")
+            print(f"   Mensagem: {str(e)}")
+            if "grok" in agent_id.lower():
+                print(f"   ⚠️  GROK 4 FALHOU! Detalhes completos:")
+                print(error_details)
+            
+            if attempt == max_retries:
+                # ÚLTIMA TENTATIVA FALHOU - ERRO CRÍTICO
+                print(f"\n🚨 FALHA CRÍTICA: {agent_name} não respondeu após {max_retries} tentativas!")
+                print(f"   Último erro: {error_details}")
+                print(f"   Modelo: {agent_id}")
+                print(f"   Rodada: {round_num}")
+                print(f"   Erro: {e}\n")
+                return False, f"FALHA APÓS {max_retries} RETRIES: {e}", 0, 0, 0
+            
+            # Aguardar antes do próximo retry
+            continue
+    
+    # Nunca deve chegar aqui, mas por segurança
+    return False, "ERRO DESCONHECIDO NO RETRY LOOP", 0, 0, 0
 
 def save_results(round_num: int, results: dict, filename_prefix: str):
     """Salva resultados de uma rodada"""
@@ -478,11 +442,15 @@ def main():
     print("="*80 + "\n")
     
     round1_results = {}
+    failed_agents = []
     
     for agent_key, agent_info in AGENTS.items():
         success, response, elapsed, in_tokens, out_tokens = consult_agent(
-            agent_key, agent_info, PROMPT_ROUND1, round_num=1
+            agent_key, agent_info, PROMPT_ROUND1, round_num=1, max_retries=3
         )
+        
+        if not success:
+            failed_agents.append(f"{agent_info['name']} (Rodada 1)")
         
         round1_results[agent_key] = {
             'agent_name': agent_info['name'],
@@ -496,6 +464,19 @@ def main():
             print("\n⏸  Aguardando 5s...")
             time.sleep(5)
     
+    # VALIDAÇÃO CRÍTICA: Todos os 4 modelos DEVEM ter respondido
+    successful_agents = sum(1 for r in round1_results.values() if r['success'])
+    if successful_agents < 4:
+        print("\n" + "="*80)
+        print("🚨 ERRO CRÍTICO - RODADA 1 INCOMPLETA!")
+        print("="*80)
+        print(f"Modelos que responderam: {successful_agents}/4")
+        print(f"Modelos que FALHARAM: {failed_agents}")
+        print("\nO debate SACI requer TODOS os 4 modelos. Abortando...\n")
+        return
+    
+    print(f"\n✅ RODADA 1 COMPLETA: {successful_agents}/4 agentes responderam!\n")
+    
     save_results(1, round1_results, "methodologies")
     
     # ============================================================
@@ -507,11 +488,15 @@ def main():
     
     critique_prompt = build_critique_prompt(round1_results)
     round2_results = {}
+    failed_agents = []
     
     for agent_key, agent_info in AGENTS.items():
         success, response, elapsed, in_tokens, out_tokens = consult_agent(
-            agent_key, agent_info, critique_prompt, round_num=2
+            agent_key, agent_info, critique_prompt, round_num=2, max_retries=3
         )
+        
+        if not success:
+            failed_agents.append(f"{agent_info['name']} (Rodada 2)")
         
         round2_results[agent_key] = {
             'agent_name': agent_info['name'],
@@ -525,6 +510,19 @@ def main():
             print("\n⏸  Aguardando 5s...")
             time.sleep(5)
     
+    # VALIDAÇÃO CRÍTICA: Todos os 4 modelos DEVEM ter respondido
+    successful_agents = sum(1 for r in round2_results.values() if r['success'])
+    if successful_agents < 4:
+        print("\n" + "="*80)
+        print("🚨 ERRO CRÍTICO - RODADA 2 INCOMPLETA!")
+        print("="*80)
+        print(f"Modelos que responderam: {successful_agents}/4")
+        print(f"Modelos que FALHARAM: {failed_agents}")
+        print("\nO debate SACI requer TODOS os 4 modelos. Abortando...\n")
+        return
+    
+    print(f"\n✅ RODADA 2 COMPLETA: {successful_agents}/4 agentes responderam!\n")
+    
     save_results(2, round2_results, "critiques")
     
     # ============================================================
@@ -536,11 +534,15 @@ def main():
     
     convergence_prompt = build_convergence_prompt(round1_results, round2_results)
     round3_results = {}
+    failed_agents = []
     
     for agent_key, agent_info in AGENTS.items():
         success, response, elapsed, in_tokens, out_tokens = consult_agent(
-            agent_key, agent_info, convergence_prompt, round_num=3
+            agent_key, agent_info, convergence_prompt, round_num=3, max_retries=3
         )
+        
+        if not success:
+            failed_agents.append(f"{agent_info['name']} (Rodada 3)")
         
         round3_results[agent_key] = {
             'agent_name': agent_info['name'],
@@ -553,6 +555,21 @@ def main():
         if agent_key != list(AGENTS.keys())[-1]:
             print("\n⏸  Aguardando 5s...")
             time.sleep(5)
+    
+    # VALIDAÇÃO CRÍTICA: Todos os 4 modelos DEVEM ter respondido
+    successful_agents = sum(1 for r in round3_results.values() if r['success'])
+    if successful_agents < 4:
+        print("\n" + "="*80)
+        print("🚨 ERRO CRÍTICO - RODADA 3 INCOMPLETA!")
+        print("="*80)
+        print(f"Modelos que responderam: {successful_agents}/4")
+        print(f"Modelos que FALHARAM: {failed_agents}")
+        print("\nO debate SACI requer TODOS os 4 modelos. Abortando...\n")
+        print("⚠️  RODADA 3 É CRÍTICA: Contém análise de impacto de mercado!")
+        return
+    
+    print(f"\n✅ RODADA 3 COMPLETA: {successful_agents}/4 agentes responderam!\n")
+    print("🎯 ANÁLISE DE IMPACTO DE MERCADO COMPLETA!\n")
     
     save_results(3, round3_results, "convergence_market")
     
@@ -650,7 +667,7 @@ def main():
 Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 ## MODELOS CONSULTADOS
-- {AGENTS['claude_thinker']['name']} (raciocínio profundo)
+- {AGENTS['claude_sonnet']['name']} (raciocínio profundo)
 - {AGENTS['gpt5_codex']['name']} (implementação técnica)
 - {AGENTS['gemini']['name']} (visão de mercado)
 - {AGENTS['grok']['name']} (perspectiva disruptiva)

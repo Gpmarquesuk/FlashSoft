@@ -4,13 +4,16 @@ from openai import OpenAI
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-TIMEOUT = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
-MAX_RETRIES = int(os.getenv("MAX_RETRIES_PER_CALL", "2"))
+TIMEOUT = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "90"))  # 90s (mais agressivo)
+MAX_RETRIES = int(os.getenv("MAX_RETRIES_PER_CALL", "1"))  # APENAS 1 retry no tenacity
 
 if not OPENROUTER_API_KEY:
     raise RuntimeError("OPENROUTER_API_KEY ausente")
 
-client = OpenAI(api_key=OPENROUTER_API_KEY, base_url=BASE_URL)
+# Client simples - sem customização de httpx
+# O client global foi removido. Uma nova instância é criada em cada chamada de chat/chat_json
+# para garantir que não haja estado compartilhado ou conexões reutilizadas que possam causar hangs.
+# client = OpenAI(...)
 
 def _headers():
     return {
@@ -70,8 +73,15 @@ def safe_json_extract(text: str):
 
     raise ValueError("Saída sem JSON")
 
-@retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential_jitter(1, 4))
-def chat(model: str, system: str, user: str, temperature: float = 0.2, max_tokens: int = 2000) -> str:
+@retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential_jitter(1, 2))
+def chat(model: str, system: str, user: str, temperature: float = 0.2, max_tokens: int = 8192) -> str:
+    """Instancia um novo cliente para cada chamada para evitar problemas de conexão."""
+    client = OpenAI(
+        api_key=OPENROUTER_API_KEY, 
+        base_url=BASE_URL,
+        timeout=TIMEOUT,
+        max_retries=0 # Desabilitar retry do SDK, usar o do Tenacity
+    )
     resp = client.chat.completions.create(
         model=model,
         messages=[
@@ -80,14 +90,19 @@ def chat(model: str, system: str, user: str, temperature: float = 0.2, max_token
         ],
         temperature=temperature,
         max_tokens=max_tokens,
-        extra_headers=_headers(),
-        timeout=TIMEOUT
+        extra_headers=_headers()
     )
     return resp.choices[0].message.content
 
-@retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential_jitter(1, 4))
-def chat_json(model: str, system: str, user: str, temperature: float = 0.0, max_tokens: int = 2000) -> str:
-    """Pede JSON nativo quando suportado (OpenRouter encaminha para os modelos que aceitam)."""
+@retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential_jitter(1, 2))
+def chat_json(model: str, system: str, user: str, temperature: float = 0.0, max_tokens: int = 8192) -> str:
+    """Pede JSON nativo e também instancia um cliente novo."""
+    client = OpenAI(
+        api_key=OPENROUTER_API_KEY, 
+        base_url=BASE_URL,
+        timeout=TIMEOUT,
+        max_retries=0 # Desabilitar retry do SDK, usar o do Tenacity
+    )
     resp = client.chat.completions.create(
         model=model,
         messages=[
@@ -97,7 +112,6 @@ def chat_json(model: str, system: str, user: str, temperature: float = 0.0, max_
         temperature=temperature,
         max_tokens=max_tokens,
         response_format={"type": "json_object"},
-        extra_headers=_headers(),
-        timeout=TIMEOUT
+        extra_headers=_headers()
     )
     return resp.choices[0].message.content
