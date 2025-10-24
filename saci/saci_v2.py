@@ -161,10 +161,6 @@ def debate_saci_v2(
         
         # 2. Análise de Convergência
         try:
-            if debug_mode:
-                # No modo debug, não usamos embeddings pagos
-                raise ValueError("Análise semântica desativada em modo debug.")
-
             convergence_score, all_embeddings = _calculate_semantic_convergence(respostas)
             rodada_data['analise_convergencia'] = {
                 'score': convergence_score,
