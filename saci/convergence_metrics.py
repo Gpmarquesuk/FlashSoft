@@ -11,13 +11,23 @@ Features:
 - Score de convergência híbrido (0.6 * similaridade + 0.4 * votos)
 
 Filosofia: Funções puras, zero state, testabilidade máxima.
+
+CORREÇÕES v2.0.1 (Consenso SACI 4/4 modelos):
+- ✅ Logging adequado (não fallback silencioso)
+- ✅ Exceções não suprimidas
+- ✅ Erros reportados claramente
 """
 
 import os
 import json
 import re
+import logging
 from typing import List, Dict, Optional, Tuple
 from openai import OpenAI
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -40,20 +50,32 @@ def _get_embedding(text: str, model: str = "text-embedding-3-small") -> List[flo
         Lista de floats representando o embedding
         
     Raises:
-        Exception: Se API falhar após retries
+        Exception: Se API falhar (não faz fallback silencioso)
     """
     # Cache hit
     cache_key = f"{model}:{text[:100]}"  # Usa primeiros 100 chars como key
     if cache_key in _embedding_cache:
+        logger.debug(f"Cache HIT para embedding: {text[:50]}...")
         return _embedding_cache[cache_key]
     
     # Cache miss - chamar API
+    logger.info(f"Gerando embedding via API: {text[:50]}...")
+    
     try:
-        # OpenRouter não suporta embeddings - usar OpenAI diretamente
-        # Fallback: usar similaridade léxica (Jaccard)
-        import warnings
-        warnings.warn("OpenRouter does not support embeddings - using Jaccard fallback", RuntimeWarning)
-        raise NotImplementedError("Embeddings not supported via OpenRouter")
+        client = OpenAI(
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+            base_url="https://openrouter.ai/api/v1",
+            timeout=30.0,  # Aumentado de 10s para 30s (consenso)
+            max_retries=2   # Retry logic (consenso)
+        )
+        
+        response = client.embeddings.create(
+            model=model,
+            input=text[:8000]  # Limita tamanho
+        )
+        
+        embedding = response.data[0].embedding
+        logger.info(f"✅ Embedding gerado com sucesso: {len(embedding)} dimensões")
         
         # Adicionar ao cache (FIFO se cheio)
         if len(_embedding_cache) >= MAX_CACHE_SIZE:
@@ -65,9 +87,11 @@ def _get_embedding(text: str, model: str = "text-embedding-3-small") -> List[flo
         return embedding
         
     except Exception as e:
-        # Fallback: retornar embedding "neutro" (zeros)
-        print(f"[WARNING] Embedding API failed: {e}")
-        return [0.0] * 1536  # Dimensão padrão do text-embedding-3-small
+        # NÃO fazer fallback silencioso (consenso 4/4 modelos)
+        logger.critical(f"❌ EMBEDDINGS API FAILURE: {type(e).__name__}: {e}")
+        logger.critical(f"   Texto: {text[:100]}...")
+        logger.critical(f"   API Key configurada: {bool(os.getenv('OPENROUTER_API_KEY'))}")
+        raise  # Propaga exceção ao invés de retornar 0.0
 
 
 def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
@@ -104,9 +128,6 @@ def compute_semantic_similarity(texts: List[str]) -> float:
     """
     Calcula similaridade semântica média entre todos os pares de textos.
     
-    **NOTA**: OpenRouter não suporta embeddings, então usa similaridade
-    de Jaccard (léxica) como fallback. Para embeddings reais, use OpenAI API diretamente.
-    
     Esta métrica detecta quando agentes convergem em conteúdo semântico,
     mesmo usando palavras diferentes (ex: "deploy agora" vs "lançar imediatamente").
     
@@ -115,6 +136,9 @@ def compute_semantic_similarity(texts: List[str]) -> float:
         
     Returns:
         Float entre 0 (divergência total) e 1 (consenso perfeito)
+        
+    Raises:
+        Exception: Se embeddings falharem (não retorna 0.0 silenciosamente)
         
     Exemplo:
         >>> texts = ["Use SQL", "Use SQL", "Use SQL"]
@@ -128,13 +152,35 @@ def compute_semantic_similarity(texts: List[str]) -> float:
     if len(texts) < 2:
         return 1.0  # Single text = convergência perfeita
     
+    logger.info(f"Calculando similaridade semântica para {len(texts)} textos...")
+    
     try:
-        # Usar similaridade de Jaccard (fallback leve, sem API calls)
-        return compute_jaccard_similarity(texts)
+        # Gerar embeddings para todos os textos
+        embeddings = [_get_embedding(text) for text in texts]
+        logger.info(f"✅ {len(embeddings)} embeddings gerados com sucesso")
+        
+        # Calcular similaridade para todos os pares
+        similarities = []
+        for i in range(len(embeddings)):
+            for j in range(i + 1, len(embeddings)):
+                sim = _cosine_similarity(embeddings[i], embeddings[j])
+                similarities.append(sim)
+        
+        # Retornar média
+        if not similarities:
+            return 0.5  # Fallback neutro
+        
+        avg_similarity = sum(similarities) / len(similarities)
+        logger.info(f"📊 Similaridade média: {avg_similarity:.3f}")
+        
+        # Normalizar para 0-1 (cosseno pode ser negativo, embora raro)
+        result = max(0.0, min(1.0, avg_similarity))
+        return result
         
     except Exception as e:
-        print(f"[ERROR] compute_semantic_similarity failed: {e}")
-        return 0.5  # Fallback neutro em caso de erro
+        # NÃO fazer fallback silencioso (consenso 4/4)
+        logger.critical(f"❌ compute_semantic_similarity FAILED: {e}")
+        raise  # Propaga exceção
 
 
 def extract_structured_votes(responses: List[str]) -> Dict[str, int]:
