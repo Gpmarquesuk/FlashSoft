@@ -162,7 +162,7 @@ def debate_saci(
                     system=f"You are an expert in {model_info['specialty']}. Participate in structured debate with other AI models to reach consensus.",
                     user=prompt,
                     temperature=0.4,
-                    max_tokens=4096  # Aumentado de 2000 para 4096
+                    max_tokens=10000
                 )
                 
                 rodada_data['respostas'][model_key] = {
