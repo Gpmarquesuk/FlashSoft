@@ -162,7 +162,7 @@ def debate_saci(
                     system=f"You are an expert in {model_info['specialty']}. Participate in structured debate with other AI models to reach consensus.",
                     user=prompt,
                     temperature=0.4,
-                    max_tokens=2000
+                    max_tokens=4096  # Aumentado de 2000 para 4096
                 )
                 
                 rodada_data['respostas'][model_key] = {
@@ -302,8 +302,8 @@ def _extract_votes(respostas: Dict) -> Dict:
     """
     Extrai votos das respostas dos modelos.
     
-    Estratégia simples: conta palavras-chave como "PostgreSQL", "MongoDB", etc.
-    Para v2.0, usaremos parsing JSON estruturado.
+    Busca padrões: VOTE: X, VOTO: X, **VOTE: X**, etc.
+    Retorna a letra/opção votada (A, B, C, D, E, etc.)
     """
     votos = {}
     
@@ -311,22 +311,41 @@ def _extract_votes(respostas: Dict) -> Dict:
         if not resp_data['success']:
             continue
         
-        response_lower = resp_data['response'].lower()
+        response = resp_data['response']
+        response_lower = response.lower()
         
-        # Extração simples baseada em keywords
-        # TODO: melhorar para v2.0 com JSON estruturado
         voto = "unclear"
         
-        # Buscar padrões de voto explícito
-        if "voto:" in response_lower or "vote:" in response_lower:
-            # Extrair após "voto:"
-            parts = response_lower.split("voto:")
-            if len(parts) > 1:
-                voto_section = parts[1][:200]
-                # Primeira palavra significativa
-                words = voto_section.split()
-                if words:
-                    voto = words[0].strip('.,;:!?')
+        # Padrão 1: "VOTE: X" ou "VOTO: X" (com ou sem **)
+        import re
+        patterns = [
+            r'\*\*vote:\s*([a-e])\*\*',  # **VOTE: B**
+            r'\*\*voto:\s*([a-e])\*\*',  # **VOTO: B**
+            r'vote:\s*([a-e])(?:\s|$|\n)',  # VOTE: B (seguido de espaço/fim)
+            r'voto:\s*([a-e])(?:\s|$|\n)',  # VOTO: B (seguido de espaço/fim)
+            r'##\s+voto\s+final[^\n]*\n+\*\*voto:\s*([a-e])\*\*',  # Markdown header + voto
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, response_lower)
+            if match:
+                voto = match.group(1).upper()
+                break
+        
+        # Se não encontrou, buscar "vote X" ou "voto X" apenas no início de linhas
+        if voto == "unclear":
+            lines = response_lower.split('\n')
+            for line in lines:
+                line = line.strip()
+                # Linhas que começam com "vote" ou "voto"
+                if line.startswith('vote') or line.startswith('voto') or line.startswith('**vote') or line.startswith('**voto'):
+                    # Buscar primeira letra A-E nessa linha
+                    for char in line:
+                        if char in 'abcde':
+                            voto = char.upper()
+                            break
+                    if voto != "unclear":
+                        break
         
         votos[model_key] = voto
     
