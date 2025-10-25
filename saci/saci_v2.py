@@ -42,6 +42,7 @@ import json
 import time
 from datetime import datetime
 from typing import Dict, List, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Clientes de LLM
 from llm_client import chat
@@ -79,8 +80,8 @@ SACI_MODELS_PROD = {
 # Modelos de Debug (Gratuitos)
 SACI_MODELS_FREE = {
     'claude': {
-        'id': 'deepseek/deepseek-chat-v3.1:free',
-        'name': 'DeepSeek Chat (Free)'
+        'id': 'z-ai/glm-4.5-air:free',
+        'name': 'GLM 4.5 Air (Free)'
     },
     'codex': {
         'id': 'qwen/qwen-2.5-coder-32b-instruct:free',
@@ -91,8 +92,8 @@ SACI_MODELS_FREE = {
         'name': 'Chimera (Free)'
     },
     'grok': {
-        'id': 'mistralai/mistral-7b-instruct:free',
-        'name': 'Mistral 7B (Free)'
+        'id': 'meta-llama/llama-3.3-8b-instruct:free',
+        'name': 'Llama 3.3 8B (Free)'
     }
 }
 
@@ -150,7 +151,13 @@ def debate_saci_v2(
         
         # 1. Coletar respostas
         prompt = _build_prompt(problema, contexto, historico)
+        
+        start_time = time.time()
         respostas = _collect_responses(prompt, verbose, saci_models)
+        end_time = time.time()
+        
+        if verbose:
+            print(f"\n⏱️  Tempo da rodada de consultas: {end_time - start_time:.2f} segundos (paralelizado)")
         
         rodada_data = {
             'numero': rodada_num,
@@ -227,37 +234,53 @@ def debate_saci_v2(
 # ============================================================================
 
 def _collect_responses(prompt: str, verbose: bool, saci_models: Dict) -> Dict:
-    """Coleta respostas de todos os modelos SACI."""
+    """Coleta respostas de todos os modelos SACI em paralelo."""
     respostas = {}
-    for model_key, model_info in saci_models.items():
-        if verbose:
-            print(f"⏳ Consultando {model_info['name']}...")
-        try:
-            response_text = chat(
-                model=model_info['id'],
-                system="You are an expert AI participant in a structured debate.",
-                user=prompt,
-                temperature=0.4,
-                max_tokens=10000
-            )
-            respostas[model_key] = {
-                'model_name': model_info['name'],
-                'response': response_text,
-                'success': True
-            }
+    with ThreadPoolExecutor(max_workers=len(saci_models)) as executor:
+        future_to_model = {
+            executor.submit(
+                _fetch_single_response, 
+                model_info['id'], 
+                prompt, 
+                model_info['name']
+            ): model_key
+            for model_key, model_info in saci_models.items()
+        }
+
+        for future in as_completed(future_to_model):
+            model_key = future_to_model[future]
+            model_name = saci_models[model_key]['name']
             if verbose:
-                print(f"✅ {model_info['name']}: {len(response_text)} chars")
-        except Exception as e:
-            if verbose:
-                print(f"❌ {model_info['name']}: ERROR - {e}")
-            respostas[model_key] = {
-                'model_name': model_info['name'],
-                'response': None,
-                'success': False,
-                'error': str(e)
-            }
-        time.sleep(DELAY_BETWEEN_CALLS)
+                print(f"⏳ Coletando resposta de {model_name}...")
+            try:
+                respostas[model_key] = future.result()
+                if verbose:
+                    print(f"✅ {model_name}: {len(respostas[model_key]['response'])} chars")
+            except Exception as e:
+                if verbose:
+                    print(f"❌ {model_name}: ERROR - {e}")
+                respostas[model_key] = {
+                    'model_name': model_name,
+                    'response': None,
+                    'success': False,
+                    'error': str(e)
+                }
     return respostas
+
+def _fetch_single_response(model_id: str, prompt: str, model_name: str) -> Dict:
+    """Função auxiliar para buscar uma única resposta de um modelo."""
+    response_text = chat(
+        model=model_id,
+        system="You are an expert AI participant in a structured debate.",
+        user=prompt,
+        temperature=0.4,
+        max_tokens=10000
+    )
+    return {
+        'model_name': model_name,
+        'response': response_text,
+        'success': True
+    }
 
 def _calculate_semantic_convergence(respostas: Dict) -> tuple[float, Dict]:
     """Gera embeddings e calcula a similaridade de cosseno média."""
@@ -267,9 +290,18 @@ def _calculate_semantic_convergence(respostas: Dict) -> tuple[float, Dict]:
     if len(valid_responses) < 2:
         return 0.0, {}
 
-    for key, resp_data in respostas.items():
-        if resp_data['success']:
-            embeddings[key] = get_embedding(resp_data['response'])
+    with ThreadPoolExecutor(max_workers=len(valid_responses)) as executor:
+        future_to_key = {
+            executor.submit(get_embedding, resp_data['response']): key
+            for key, resp_data in respostas.items() if resp_data['success'] and resp_data['response']
+        }
+        for future in as_completed(future_to_key):
+            key = future_to_key[future]
+            try:
+                embeddings[key] = future.result()
+            except Exception as e:
+                print(f"Falha ao gerar embedding para {key}: {e}")
+
 
     # Calcular similaridade de cosseno par a par
     keys = list(embeddings.keys())

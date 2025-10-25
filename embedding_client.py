@@ -39,7 +39,11 @@ load_dotenv()
 
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
-    raise ValueError("A variável de ambiente OPENAI_API_KEY não foi definida.")
+    # Tenta carregar novamente para garantir
+    load_dotenv()
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("A variável de ambiente OPENAI_API_KEY não foi definida no ambiente ou no arquivo .env.")
 
 try:
     client = OpenAI(api_key=api_key)

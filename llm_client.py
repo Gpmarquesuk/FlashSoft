@@ -1,6 +1,10 @@
 ﻿import os, json, re
 from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 from openai import OpenAI
+from dotenv import load_dotenv
+
+# Carrega as variáveis de ambiente do arquivo .env
+load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
@@ -8,7 +12,11 @@ TIMEOUT = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "90"))  # 90s (mais agressivo
 MAX_RETRIES = int(os.getenv("MAX_RETRIES_PER_CALL", "1"))  # APENAS 1 retry no tenacity
 
 if not OPENROUTER_API_KEY:
-    raise RuntimeError("OPENROUTER_API_KEY ausente")
+    # Tenta carregar novamente para garantir, especialmente em ambientes de servidor
+    load_dotenv()
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError("OPENROUTER_API_KEY ausente no ambiente ou no arquivo .env")
 
 # Client simples - sem customização de httpx
 # O client global foi removido. Uma nova instância é criada em cada chamada de chat/chat_json
@@ -74,7 +82,7 @@ def safe_json_extract(text: str):
     raise ValueError("Saída sem JSON")
 
 @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential_jitter(1, 2))
-def chat(model: str, system: str, user: str, temperature: float = 0.2, max_tokens: int = 8192) -> str:
+def chat(model: str, system: str, user: str, temperature: float = 0.2, max_tokens: int = 2000) -> str:
     """Instancia um novo cliente para cada chamada para evitar problemas de conexão."""
     client = OpenAI(
         api_key=OPENROUTER_API_KEY, 
@@ -95,7 +103,7 @@ def chat(model: str, system: str, user: str, temperature: float = 0.2, max_token
     return resp.choices[0].message.content
 
 @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential_jitter(1, 2))
-def chat_json(model: str, system: str, user: str, temperature: float = 0.0, max_tokens: int = 8192) -> str:
+def chat_json(model: str, system: str, user: str, temperature: float = 0.0, max_tokens: int = 2000) -> str:
     """Pede JSON nativo e também instancia um cliente novo."""
     client = OpenAI(
         api_key=OPENROUTER_API_KEY, 
