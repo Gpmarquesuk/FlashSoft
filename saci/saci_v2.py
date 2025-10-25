@@ -213,7 +213,9 @@ def debate_saci_v2(
         'rodadas': historico,
         'timestamp': datetime.now().isoformat(),
         'versao': '2.1',
-        'debug_mode': debug_mode
+        'debug_mode': debug_mode,
+        'problema': problema,  # Adiciona o problema original
+        'contexto': contexto   # Adiciona o contexto original
     }
     
     log_filename = f"{output_dir}/saci_v2_debate_{int(time.time())}.json"
