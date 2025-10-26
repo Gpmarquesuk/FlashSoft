@@ -98,19 +98,22 @@ SACI_MODELS_FREE = {
 }
 
 DELAY_BETWEEN_CALLS = 2  # segundos
-SEMANTIC_CONVERGENCE_THRESHOLD = 0.85  # Threshold de similaridade de cosseno
+SEMANTIC_CONVERGENCE_THRESHOLD = 0.92  # Threshold de similaridade de cosseno (92%)
+MIN_ROUNDS_FOR_CONSENSUS = 2  # Rodadas mínimas antes de aceitar consenso
 
 # ============================================================================
 # FUNÇÕES DE CORE
 # ============================================================================
 
 def debate_saci_v2(
+    debate_id: str,
     problema: str,
     contexto: str = "",
     max_rodadas: int = 3,
     output_dir: str = "logs",
     verbose: bool = True,
-    debug_mode: bool = False
+    debug_mode: bool = False,
+    timestamp: Optional[datetime] = None
 ) -> Dict:
     """
     Executa um debate SACI v2.1 completo com análise semântica.
@@ -140,8 +143,34 @@ def debate_saci_v2(
     os.makedirs(output_dir, exist_ok=True)
     
     historico = []
-    consenso_atingido = False
+    consenso_atingido: Optional[bool] = None  # None enquanto em andamento, True/False ao final
     solucao_final = None
+
+    # Nome do arquivo (garante extensão .json)
+    log_filename = os.path.join(output_dir, f"{debate_id}.json")
+
+    def _persist_state(final: bool = False):
+        """Salva estado parcial ou final para consumo incremental pela UI."""
+        state = {
+            'consenso': consenso_atingido if final else None,
+            'solucao_final': solucao_final if final else None,
+            'rodadas': historico,
+            'rodada_atual': historico[-1]['numero'] if historico else 0,
+            'max_rodadas': max_rodadas,
+            'timestamp': (timestamp if timestamp else datetime.now()).timestamp(),
+            'versao': '2.1',
+            'debug_mode': debug_mode,
+            'problema': problema,
+            'contexto': contexto
+        }
+        try:
+            with open(log_filename, 'w', encoding='utf-8') as f:
+                json.dump(state, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            if verbose:
+                print(f"⚠️ Falha ao salvar estado do debate ({debate_id}): {e}")
+
+    # NÃO salva estado inicial aqui pois o servidor já criou ao receber a requisição
     
     for rodada_num in range(1, max_rodadas + 1):
         if verbose:
@@ -177,11 +206,15 @@ def debate_saci_v2(
             if verbose:
                 print(f"\n📈 Convergência Semântica da Rodada: {convergence_score:.2f}")
 
-            if convergence_score >= SEMANTIC_CONVERGENCE_THRESHOLD:
+            # Só aceita consenso se já houver rodadas mínimas de debate
+            if convergence_score >= SEMANTIC_CONVERGENCE_THRESHOLD and rodada_num >= MIN_ROUNDS_FOR_CONSENSUS:
                 consenso_atingido = True
                 solucao_final = _synthesize_solution(respostas, "Consenso Semântico")
                 if verbose:
                     print(f"✅ CONSENSO SEMÂNTICO ATINGIDO!")
+            elif convergence_score >= SEMANTIC_CONVERGENCE_THRESHOLD:
+                if verbose:
+                    print(f"⚠️ Convergência alta ({convergence_score:.2f}), mas ainda na rodada {rodada_num}. Mínimo: {MIN_ROUNDS_FOR_CONSENSUS}")
         
         except Exception as e:
             if verbose:
@@ -194,7 +227,13 @@ def debate_saci_v2(
                 'votos': votos,
                 'metodo': 'keyword_fallback'
             }
-            consenso_atingido, solucao_final = _check_consensus_fallback(votos, 0.75, respostas, len(saci_models))
+            # Só aceita consenso por votos após rodadas mínimas
+            if rodada_num >= MIN_ROUNDS_FOR_CONSENSUS:
+                consenso_atingido, solucao_final = _check_consensus_fallback(votos, 0.75, respostas, len(saci_models))
+            else:
+                consenso_atingido = False
+                solucao_final = None
+                
             if verbose:
                 print(f"📊 Votos (Fallback): {votos}")
             if consenso_atingido:
@@ -202,32 +241,46 @@ def debate_saci_v2(
                     print(f"✅ CONSENSO POR VOTOS (FALLBACK) ATINGIDO!")
 
         historico.append(rodada_data)
-        
+
+        # Persistir progresso após cada rodada
+        _persist_state(final=False)
+
         if consenso_atingido:
             break
 
     # Resultado Final
+    ts_obj = timestamp if timestamp else datetime.now()
+    # Finaliza consenso_atingido se não houve (fica False explicitamente)    
+    if consenso_atingido is None:
+        consenso_atingido = False
+
     resultado = {
         'consenso': consenso_atingido,
         'solucao_final': solucao_final,
         'rodadas': historico,
-        'timestamp': datetime.now().isoformat(),
+        'rodada_atual': historico[-1]['numero'] if historico else 0,
+        'max_rodadas': max_rodadas,
+        'timestamp': ts_obj.timestamp(),
         'versao': '2.1',
         'debug_mode': debug_mode,
-        'problema': problema,  # Adiciona o problema original
-        'contexto': contexto   # Adiciona o contexto original
+        'problema': problema,
+        'contexto': contexto
     }
-    
-    log_filename = f"{output_dir}/saci_v2_debate_{int(time.time())}.json"
-    with open(log_filename, 'w', encoding='utf-8') as f:
-        json.dump(resultado, f, ensure_ascii=False, indent=2)
+
+    # Persistência final
+    try:
+        with open(log_filename, 'w', encoding='utf-8') as f:
+            json.dump(resultado, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        if verbose:
+            print(f"⚠️ Falha ao salvar resultado final ({debate_id}): {e}")
         
     if verbose:
         print(f"\n{'='*80}")
         print("📁 DEBATE FINALIZADO (v2.1)")
         print(f"{'='*80}")
         print(f"✅ Consenso: {'SIM' if consenso_atingido else 'NÃO'}")
-        print(f"📄 Log salvo: {log_filename}\n")
+    print(f"📄 Log salvo: {log_filename}\n")
 
     return resultado
 

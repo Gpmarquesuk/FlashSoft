@@ -10,21 +10,71 @@ Dashboard em Streamlit com visualizações avançadas:
 
 import streamlit as st
 import requests
+import time
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
+import json
+import os
+from datetime import datetime
 
-# URL da API do backend
+# --- Utilidades internas ---
+
+def force_rerun() -> None:
+    """Força o Streamlit a reiniciar o script, independente da versão."""
+    rerun_callable = getattr(st, "experimental_rerun", None) or getattr(st, "rerun", None)
+    if rerun_callable:
+        rerun_callable()
+        return
+    try:
+        from streamlit.runtime.scriptrunner import RerunException, RerunData  # type: ignore
+    except ImportError:  # fallback para versões muito antigas
+        from streamlit.script_runner import RerunException, RerunData  # type: ignore
+    raise RerunException(RerunData())
+
+# --- Configuração da Página e API ---
+st.set_page_config(page_title="SACI - Debate ao Vivo", layout="wide")
 API_URL = "http://127.0.0.1:8000"
 
-st.set_page_config(page_title="SACI v3.1", layout="wide")
+# --- Estilos CSS Customizados ---
+st.markdown("""
+<style>
+    /* Melhora a aparência dos cards de métricas */
+    [data-testid="stMetric"] {
+        background-color: #2a2a38;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    [data-testid="stMetricLabel"] {
+        font-weight: bold;
+        color: #a0a0b0;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 2em;
+        color: #ffffff;
+    }
+    /* Estilo para o container de resposta */
+    .response-container {
+        padding: 15px;
+        border: 1px solid #444;
+        border-radius: 8px;
+        max-height: 600px;
+        overflow-y: auto;
+        background-color: #1e1e2f;
+        font-family: 'Courier New', Courier, monospace;
+        white-space: pre-wrap; /* Garante a quebra de linha */
+        word-wrap: break-word; /* Garante a quebra de palavras longas */
+    }
+    .model-header {
+        font-size: 1.2em;
+        font-weight: bold;
+        color: #3498db;
+        margin-bottom: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-st.title("🧠 SACI v3.1 - Sistema Avançado de Convergência de Ideias")
-st.caption("Interface evoluída com visualizações e análises comparativas.")
-
-# ============================================================================
-# Funções da API
-# ============================================================================
+# --- Funções de Interação com a API ---
 
 def start_debate(problema, contexto, max_rodadas, debug_mode):
     payload = {
@@ -38,7 +88,17 @@ def start_debate(problema, contexto, max_rodadas, debug_mode):
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        st.error(f"Erro ao iniciar debate: {e}")
+        st.error(f"❌ Erro de conexão ao iniciar debate: {e}")
+        return None
+
+def get_debate_status(debate_id):
+    try:
+        response = requests.get(f"{API_URL}/debates/{debate_id}/status")
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        # Não mostra erro na tela para não poluir, mas loga no console
+        print(f"Erro ao buscar status: {e}")
         return None
 
 def get_history():
@@ -47,294 +107,190 @@ def get_history():
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        st.error(f"Erro ao carregar histórico: {e}")
+        st.error(f"⚠️ Erro ao carregar histórico: {e}")
         return []
 
-def get_debate_details(debate_id):
-    try:
-        response = requests.get(f"{API_URL}/debates/{debate_id}")
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        st.error(f"Erro ao carregar detalhes do debate: {e}")
-        return None
-
-# ============================================================================
-# Funções de Visualização
-# ============================================================================
-
-def plot_convergence_chart(rodadas):
-    """Cria gráfico de linha mostrando a evolução da convergência semântica."""
-    rodada_nums = []
-    convergence_scores = []
-    
-    for rodada in rodadas:
-        analise = rodada.get('analise_convergencia', {})
-        if analise.get('metodo') == 'semantico':
-            rodada_nums.append(rodada['numero'])
-            convergence_scores.append(analise.get('score', 0))
-    
-    if not rodada_nums:
-        return None
-    
-    fig = go.Figure()
-    
-    # Linha de convergência
-    fig.add_trace(go.Scatter(
-        x=rodada_nums,
-        y=convergence_scores,
-        mode='lines+markers',
-        name='Convergência Semântica',
-        line=dict(color='#3498db', width=3),
-        marker=dict(size=10)
-    ))
-    
-    # Linha de threshold
-    threshold = rodadas[0].get('analise_convergencia', {}).get('threshold', 0.85)
-    fig.add_trace(go.Scatter(
-        x=rodada_nums,
-        y=[threshold] * len(rodada_nums),
-        mode='lines',
-        name=f'Threshold ({threshold:.0%})',
-        line=dict(color='#e74c3c', width=2, dash='dash')
-    ))
-    
-    fig.update_layout(
-        title='Evolução da Convergência Semântica',
-        xaxis_title='Rodada',
-        yaxis_title='Score de Convergência',
-        yaxis=dict(range=[0, 1], tickformat='.0%'),
-        hovermode='x unified',
-        template='plotly_white'
-    )
-    
-    return fig
+# --- Funções de Renderização da UI ---
 
 def render_side_by_side_comparison(rodada):
-    """Renderiza respostas dos modelos lado a lado em colunas."""
     respostas = rodada.get('respostas', {})
-    
-    # Ordem fixa dos modelos
     model_order = ['claude', 'codex', 'gemini', 'grok']
-    cols = st.columns(4)
-    
+    cols = st.columns(len(model_order))
+
     for idx, model_key in enumerate(model_order):
-        if model_key not in respostas:
-            continue
-            
-        resp_data = respostas[model_key]
-        with cols[idx]:
-            st.markdown(f"**{resp_data['model_name']}**")
-            
-            if resp_data['success']:
-                # Truncar resposta para economizar espaço
-                response_text = resp_data['response']
-                if len(response_text) > 500:
-                    response_text = response_text[:500] + "..."
-                    
-                st.markdown(
-                    f"<div style='padding: 10px; border: 1px solid #ddd; border-radius: 5px; height: 300px; overflow-y: auto;'>"
-                    f"{response_text}"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
-                
-                with st.expander("Ver resposta completa"):
-                    st.markdown(resp_data['response'])
-            else:
-                st.error(f"❌ {resp_data.get('error', 'Erro desconhecido')}")
+        if model_key in respostas:
+            resp_data = respostas[model_key]
+            with cols[idx]:
+                st.markdown(f"<div class='model-header'>{resp_data.get('model_name', model_key.title())}</div>", unsafe_allow_html=True)
+                if resp_data.get('success'):
+                    st.markdown(f"<div class='response-container'>{resp_data['response']}</div>", unsafe_allow_html=True)
+                else:
+                    st.error(f"Erro: {resp_data.get('error', 'Desconhecido')}")
 
-def export_debate_markdown(details):
-    """Gera markdown formatado do debate para download."""
-    md = f"# Debate SACI v3.1\n\n"
-    md += f"**Problema:** {details.get('problema', 'N/A')}\n\n"
-    md += f"**Consenso Atingido:** {'✅ Sim' if details.get('consenso') else '❌ Não'}\n\n"
-    md += f"**Data:** {details.get('timestamp', 'N/A')}\n\n"
+def plot_convergence_chart(rodadas):
+    scores = [r.get('analise_convergencia', {}).get('score', 0) for r in rodadas if r.get('analise_convergencia', {}).get('metodo') == 'semantico']
+    if not scores:
+        return None
     
-    if details.get('solucao_final'):
-        md += f"## Solução Final\n\n{details['solucao_final']}\n\n"
+    threshold = rodadas[0].get('analise_convergencia', {}).get('threshold', 0.85)
     
-    md += "## Rodadas de Debate\n\n"
-    
-    for rodada in details.get('rodadas', []):
-        md += f"### Rodada {rodada['numero']}\n\n"
-        analise = rodada.get('analise_convergencia', {})
-        if analise.get('metodo') == 'semantico':
-            md += f"**Convergência:** {analise.get('score', 0):.2%}\n\n"
-        
-        for model_key, resp_data in rodada.get('respostas', {}).items():
-            md += f"#### {resp_data['model_name']}\n\n"
-            if resp_data['success']:
-                md += f"{resp_data['response']}\n\n"
-            else:
-                md += f"*Erro: {resp_data.get('error', 'Desconhecido')}*\n\n"
-        
-        md += "---\n\n"
-    
-    return md
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(y=scores, mode='lines+markers', name='Convergência'))
+    fig.add_hline(y=threshold, line_dash="dash", name='Threshold')
+    fig.update_layout(
+        title='Evolução da Convergência Semântica',
+        yaxis_range=[0,1],
+        template='plotly_dark'
+    )
+    return fig
 
-# ============================================================================
-# Layout da UI
-# ============================================================================
-
-tab1, tab2 = st.tabs(["🚀 Novo Debate", "📚 Histórico"])
-
-# --- Aba de Novo Debate ---
-with tab1:
-    st.header("Iniciar um Novo Debate")
+def live_debate_view(debate_id):
+    # Busca informações iniciais do debate para exibir título apropriado
+    initial_status = get_debate_status(debate_id)
+    debate_title = initial_status.get('problema', debate_id) if initial_status else debate_id
+    if len(debate_title) > 80:
+        debate_title = debate_title[:80] + "..."
     
-    with st.form("debate_form"):
-        problema = st.text_area("Problema Central", "Qual a melhor abordagem para...")
-        contexto = st.text_area("Contexto Adicional", "Considere os seguintes fatores...")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            max_rodadas = st.number_input("Máximo de Rodadas", min_value=1, max_value=10, value=3)
-        with col2:
-            debug_mode = st.checkbox("Modo Debug (Modelos Gratuitos)", value=False)
-            
-        submitted = st.form_submit_button("Iniciar Debate")
-        
-        if submitted:
-            with st.spinner("Enviando requisição para o servidor SACI..."):
-                result = start_debate(problema, contexto, max_rodadas, debug_mode)
-                if result:
-                    st.success(result['message'])
-                    st.info("Acompanhe o progresso na aba 'Histórico'.")
-
-# --- Aba de Histórico ---
-with tab2:
-    st.header("Histórico de Debates")
-    
-    # Filtros e Busca
-    col1, col2, col3, col4 = st.columns(4)
+    # BOTÃO DE VOLTAR SEMPRE NO TOPO
+    col1, col2 = st.columns([1, 5])
     with col1:
-        search_text = st.text_input("🔍 Buscar no problema", "")
+        if st.button("⬅️ Voltar"):
+            st.session_state.view = 'main'
+            force_rerun()
+            return
     with col2:
-        filter_consenso = st.selectbox("Consenso", ["Todos", "Sim", "Não"])
-    with col3:
-        filter_modo = st.selectbox("Modo", ["Todos", "Produção", "Debug"])
-    with col4:
-        if st.button("🔄 Atualizar"):
-            st.rerun()
-
-    history_data = get_history()
+        st.header(f"🔴 {debate_title}")
     
-    if not history_data:
-        st.info("Nenhum debate encontrado. Inicie um na aba 'Novo Debate'.")
-    else:
-        # Ordenar por timestamp
-        for item in history_data:
-            try:
-                ts_from_id = int(item['debate_id'].split('_')[-1].split('.')[0])
-                item['sort_key'] = ts_from_id
-            except (ValueError, IndexError):
-                item['sort_key'] = 0
-        
-        sorted_history = sorted(history_data, key=lambda x: x['sort_key'], reverse=True)
-        
-        # Aplicar filtros
-        filtered_history = sorted_history
-        
-        # Filtro de busca de texto
-        if search_text:
-            filtered_history = [d for d in filtered_history if search_text.lower() in d['problema'].lower()]
-        
-        # Filtro de consenso
-        if filter_consenso != "Todos":
-            consenso_bool = (filter_consenso == "Sim")
-            filtered_history = [d for d in filtered_history if d['consenso'] == consenso_bool]
-        
-        # Filtro de modo (precisa carregar detalhes do debate)
-        # Nota: Este filtro pode ser lento se houver muitos debates
-        # Uma otimização seria adicionar 'debug_mode' diretamente ao DebateInfo
-        
-        if not filtered_history:
-            st.warning("Nenhum debate encontrado com os filtros aplicados.")
+    # Busca o status do debate
+    status_data = get_debate_status(debate_id)
+
+    if not status_data or 'error' in status_data:
+        st.error("❌ Não foi possível obter o status do debate. Verifique se o backend está rodando.")
+        st.caption(f"🕒 Última tentativa: {datetime.now().strftime('%H:%M:%S')}")
+        return
+
+    st.caption(f"🕒 Última atualização: {datetime.now().strftime('%H:%M:%S')}")
+
+    rodada_atual = status_data.get('rodada_atual', 0)
+    max_rodadas = status_data.get('max_rodadas', 0)
+    rodadas = status_data.get('rodadas', []) or []
+    solucao = status_data.get('solucao_final')
+    consenso = status_data.get('consenso')
+    is_finished = consenso is not None
+
+    st.subheader("Visão Geral")
+    cols = st.columns(4)
+    cols[0].metric("Rodada Atual", f"{rodada_atual} / {max_rodadas}")
+    cols[1].metric("Status", "🏁 Finalizado" if is_finished else "🏃 Em Andamento")
+    if is_finished:
+        if consenso:
+            cols[2].success("✅ Consenso Atingido")
         else:
-            st.success(f"Mostrando {len(filtered_history)} de {len(sorted_history)} debates")
+            cols[2].error("❌ Sem Consenso")
+    else:
+        cols[2].info("⏳ Aguardando Consenso")
+
+    if not is_finished:
+        progresso = rodada_atual / max(max_rodadas, 1)
+        st.progress(progresso)
+
+    if solucao:
+        st.success("#### 💡 Solução Consensual Encontrada:")
+        with st.expander("📖 Ver Solução Completa", expanded=True):
+            st.markdown(solucao)
+
+    if rodadas:
+        fig = plot_convergence_chart(rodadas)
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("Detalhes das Rodadas")
+    if rodadas:
+        for rodada in reversed(rodadas):
+            expanded = rodada['numero'] == rodada_atual or (is_finished and rodada['numero'] == len(rodadas))
+            with st.expander(f"Rodada {rodada['numero']}", expanded=expanded):
+                render_side_by_side_comparison(rodada)
+    else:
+        st.info("Aguardando início da primeira rodada...")
+
+    if is_finished:
+        if not st.session_state.get(f"balloons_{debate_id}"):
+            st.session_state[f"balloons_{debate_id}"] = True
+            st.balloons()
+        st.success("✅ Debate finalizado!")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("🔄 Novo Debate"):
+                st.session_state.view = 'main'
+                st.session_state.pop('debate_id', None)
+                force_rerun()
+        with col2:
+            if st.button("📚 Ver Histórico"):
+                st.session_state.view = 'main'
+                st.session_state.pop('debate_id', None)
+                force_rerun()
+    else:
+        # Auto-refresh apenas para debates em andamento, com intervalo maior
+        st.caption("🔄 Página será atualizada automaticamente em 3 segundos...")
+        time.sleep(3)
+        force_rerun()
+
+def main_view():
+    st.title("🧠 SACI - Sistema Avançado de Convergência de Ideias")
+    
+    tab1, tab2 = st.tabs(["🚀 Novo Debate", "📚 Histórico"])
+
+    with tab1:
+        st.header("Iniciar um Novo Debate")
+        with st.form("debate_form"):
+            problema = st.text_area("Problema Central", "Qual a melhor abordagem para...")
+            contexto = st.text_area("Contexto Adicional", "Considere os seguintes fatores...")
             
-            df = pd.DataFrame(filtered_history)
-            df_display = df[['timestamp', 'problema', 'consenso']]
-            df_display.columns = ['Data', 'Debate', 'Consenso']
+            col1, col2 = st.columns(2)
+            max_rodadas = col1.number_input("Máximo de Rodadas", 1, 10, 3)
+            debug_mode = col2.checkbox("Modo Debug (Modelos Gratuitos)", True)
+            
+            if st.form_submit_button("▶️ Iniciar e Acompanhar ao Vivo"):
+                result = start_debate(problema, contexto, max_rodadas, debug_mode)
+                if result and 'debate_id' in result:
+                    st.session_state.view = 'live'
+                    st.session_state.debate_id = result['debate_id']
+                    force_rerun()
+                    return 'live'
+                else:
+                    st.error("Não foi possível iniciar o debate. Verifique o console do servidor.")
 
-            st.dataframe(df_display, use_container_width=True)
+    with tab2:
+        st.header("Histórico de Debates")
+        st.button("🔄 Atualizar Histórico")  # clique dispara rerun automático
+            
+        history = get_history()
+        if history:
+            # Mapeia o problema ao ID para uma seleção mais amigável
+            # Adiciona timestamp para melhor identificação
+            debate_options = {}
+            for d in sorted(history, key=lambda x: x.get('timestamp', 0), reverse=True):
+                dt = datetime.fromtimestamp(d.get('timestamp', 0)).strftime('%d/%m/%Y %H:%M')
+                label = f"[{dt}] - {d.get('problema', 'Problema desconhecido')}"
+                debate_options[label] = d['debate_id']
 
-            selected_debate_id = st.selectbox("Selecione um debate para ver os detalhes:", [d['debate_id'] for d in filtered_history])
+            selected_label = st.selectbox("Selecione um debate para ver os detalhes:", options=list(debate_options.keys()))
+            
+            if selected_label:
+                selected_id = debate_options[selected_label]
+                # Aqui você pode adicionar a lógica para mostrar detalhes de um debate histórico
+                st.info(f"Detalhes para {selected_id} ainda não implementado nesta visualização.")
+        else:
+            st.info("Nenhum debate no histórico.")
 
-            if selected_debate_id:
-                with st.spinner(f"Carregando detalhes de {selected_debate_id}..."):
-                    details = get_debate_details(selected_debate_id)
-                    if details:
-                        # Header com métricas
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Consenso Atingido?", "✅ Sim" if details.get('consenso') else "❌ Não")
-                        with col2:
-                            st.metric("Rodadas", len(details.get('rodadas', [])))
-                        with col3:
-                            versao = details.get('versao', 'N/A')
-                            debug = "🐛 Debug" if details.get('debug_mode') else "🚀 Produção"
-                            st.metric("Versão / Modo", f"{versao} ({debug})")
-                        
-                        # Gráfico de Convergência
-                        st.write("---")
-                        st.subheader("📈 Evolução da Convergência Semântica")
-                        fig = plot_convergence_chart(details.get('rodadas', []))
-                        if fig:
-                            st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            st.info("Nenhum dado de convergência semântica disponível (fallback de votos usado).")
-                        
-                        # Solução Final
-                        if details.get('solucao_final'):
-                            st.write("---")
-                            st.subheader("💡 Solução Final / Síntese")
-                            with st.expander("Ver Consenso Completo", expanded=True):
-                                st.markdown(details['solucao_final'])
-                        
-                        # Comparativo Lado a Lado
-                        st.write("---")
-                        st.subheader("🔍 Análise Comparativa por Rodada")
-                        
-                        for i, rodada in enumerate(details.get('rodadas', [])):
-                            analise = rodada.get('analise_convergencia', {})
-                            metodo = analise.get('metodo', 'N/A')
-                            
-                            rodada_header = f"**Rodada {i+1}**"
-                            if metodo == 'semantico':
-                                score = analise.get('score', 0)
-                                rodada_header += f" - Convergência: `{score:.2%}`"
-                            else:
-                                votos = analise.get('votos', {})
-                                rodada_header += f" - Fallback por Votos: `{votos}`"
-                            
-                            st.markdown(rodada_header)
-                            
-                            with st.expander(f"Ver Comparativo de Respostas - Rodada {i+1}", expanded=(i==0)):
-                                render_side_by_side_comparison(rodada)
-                            
-                            st.write("")
-                        
-                        # Exportação
-                        st.write("---")
-                        st.subheader("💾 Exportar Debate")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            markdown_content = export_debate_markdown(details)
-                            st.download_button(
-                                label="📄 Download em Markdown",
-                                data=markdown_content,
-                                file_name=f"{selected_debate_id.replace('.json', '')}.md",
-                                mime="text/markdown"
-                            )
-                        with col2:
-                            import json
-                            json_content = json.dumps(details, indent=2, ensure_ascii=False)
-                            st.download_button(
-                                label="📊 Download em JSON",
-                                data=json_content,
-                                file_name=selected_debate_id,
-                                mime="application/json"
-                            )
+
+# --- Lógica Principal de Navegação ---
+if 'view' not in st.session_state:
+    st.session_state.view = 'main'
+
+if st.session_state.view == 'live':
+    live_debate_view(st.session_state.debate_id)
+else:
+    next_view = main_view()
+    if next_view == 'live':
+        live_debate_view(st.session_state.debate_id)

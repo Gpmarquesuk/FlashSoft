@@ -93,7 +93,7 @@ class DebateRequest(BaseModel):
 
 class DebateInfo(BaseModel):
     debate_id: str
-    timestamp: str
+    timestamp: float  # Alterado para float
     problema: str
     consenso: bool
 
@@ -103,20 +103,22 @@ class WebSocketEvent(BaseModel):
     debate_id: str
     data: dict
 
-def run_debate_background(problema: str, contexto: str, max_rodadas: int, debug_mode: bool):
-    """Wrapper síncrono simples para rodar o debate em segundo plano."""
-    print(f"[BACKEND] Iniciando debate: {problema[:50]}...")
+def run_debate_background(debate_id: str, problema: str, contexto: str, max_rodadas: int, debug_mode: bool, timestamp: datetime):
+    """Executa o debate em background garantindo salvamento incremental."""
+    print(f"[BACKEND] Iniciando debate: {problema[:50]}... (id={debate_id})")
     try:
         debate_saci_v2(
+            debate_id=debate_id,  # agora sempre ID limpo (sem .json)
             problema=problema,
             contexto=contexto,
             max_rodadas=max_rodadas,
             verbose=True,
-            debug_mode=debug_mode
+            debug_mode=debug_mode,
+            timestamp=timestamp
         )
-        print(f"[BACKEND] Debate finalizado com sucesso")
+        print(f"[BACKEND] Debate finalizado com sucesso (id={debate_id})")
     except Exception as e:
-        print(f"[BACKEND] ERRO no debate: {e}")
+        print(f"[BACKEND] ERRO no debate {debate_id}: {e}")
         import traceback
         traceback.print_exc()
 
@@ -128,16 +130,46 @@ async def create_debate(request: DebateRequest, background_tasks: BackgroundTask
     print(f"[API] Recebida requisição de debate: {request.problema[:50]}...")
     
     # Inicia debate em background
+    # Gera um ID de debate único baseado no tempo para fácil rastreamento
+    timestamp = datetime.now()
+    debate_id = f"debate_{int(timestamp.timestamp())}"  # ID limpo
+    
+    # Cria arquivo de log IMEDIATAMENTE com estado inicial
+    # para que a UI possa começar a acompanhar de cara
+    log_filename = os.path.join("logs", f"{debate_id}.json")
+    os.makedirs("logs", exist_ok=True)
+    initial_state = {
+        'consenso': None,
+        'solucao_final': None,
+        'rodadas': [],
+        'rodada_atual': 0,
+        'max_rodadas': request.max_rodadas,
+        'timestamp': timestamp.timestamp(),
+        'versao': '2.1',
+        'debug_mode': request.debug_mode,
+        'problema': request.problema,
+        'contexto': request.contexto
+    }
+    try:
+        with open(log_filename, 'w', encoding='utf-8') as f:
+            json.dump(initial_state, f, ensure_ascii=False, indent=2)
+        print(f"[API] Estado inicial salvo: {log_filename}")
+    except Exception as e:
+        print(f"[API] ERRO ao salvar estado inicial: {e}")
+
     background_tasks.add_task(
         run_debate_background,
+        debate_id,  # passa o ID limpo para ser usado consistentemente
         request.problema,
         request.contexto,
         request.max_rodadas,
-        request.debug_mode
+        request.debug_mode,
+        timestamp
     )
     
     return {
-        "message": "Debate iniciado em segundo plano. Monitore o histórico para ver o resultado.",
+        "message": "Debate iniciado em segundo plano. Acompanhe ao vivo.",
+        "debate_id": debate_id, # Retorna o ID limpo
         "status": "accepted"
     }
 
@@ -171,7 +203,8 @@ async def get_debates_history():
     """
     Retorna o histórico de debates concluídos.
     """
-    log_files = glob.glob("logs/saci_v2_debate_*.json")
+    # Aceita tanto o novo padrão (debate_*.json) quanto o legado (saci_v2_debate_*.json)
+    log_files = glob.glob("logs/debate_*.json") + glob.glob("logs/saci_v2_debate_*.json")
     debates = []
     # Ordenar por data de modificação para ter os mais recentes primeiro
     log_files.sort(key=os.path.getmtime, reverse=True)
@@ -180,7 +213,8 @@ async def get_debates_history():
         try:
             with open(log_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                debate_id = os.path.basename(log_file)
+                debate_filename = os.path.basename(log_file)
+                debate_id = os.path.splitext(debate_filename)[0]  # remove .json para interface
                 
                 # Extrai o problema diretamente do JSON (adicionado na v3.1)
                 problema_completo = data.get('problema', '')
@@ -189,11 +223,16 @@ async def get_debates_history():
                     problema_resumido = problema_completo[:100] + ('...' if len(problema_completo) > 100 else '')
                 else:
                     # Fallback para debates antigos sem o campo 'problema'
-                    problema_resumido = f"Debate {debate_id.split('_')[-1].split('.')[0]}"
+                    problema_resumido = f"Debate {debate_id.split('_')[-1]}"
+
+                # Tenta obter o timestamp numérico. Se falhar, usa o tempo de modificação do arquivo.
+                timestamp_val = data.get('timestamp')
+                if not isinstance(timestamp_val, (int, float)):
+                    timestamp_val = os.path.getmtime(log_file)
 
                 debates.append(DebateInfo(
-                    debate_id=debate_id,
-                    timestamp=data.get('timestamp', 'N/A'),
+                    debate_id=debate_id,  # sem .json
+                    timestamp=timestamp_val,
                     problema=problema_resumido,
                     consenso=data.get('consenso', False)
                 ))
@@ -201,6 +240,14 @@ async def get_debates_history():
             print(f"Erro ao processar o arquivo de log {log_file}: {e}")
             continue
     return debates
+
+@app.get("/debates/{debate_id}/status")
+async def get_debate_status_endpoint(debate_id: str):
+    """
+    Retorna o status atual de um debate (usado para polling pela UI).
+    Este é um alias para /debates/{debate_id} para compatibilidade.
+    """
+    return await get_debate_details(debate_id)
 
 @app.get("/debates/{debate_id}")
 async def get_debate_details(debate_id: str):
@@ -211,10 +258,12 @@ async def get_debate_details(debate_id: str):
     if ".." in debate_id or "/" in debate_id or "\\" in debate_id:
         return {"error": "ID de debate inválido."}
         
-    log_path = os.path.join("logs", debate_id)
+    log_path = os.path.join("logs", f"{debate_id}.json") # Adiciona a extensão .json
 
     if not os.path.exists(log_path):
-        return {"error": "Debate não encontrado."}
+        # Se o arquivo não existe, pode ser que o debate esteja em andamento mas ainda não salvou o primeiro estado.
+        # Retornamos um status "iniciado" para a UI não quebrar.
+        return {"status": "iniciado", "rodada_atual": 0, "rodadas": []}
 
     with open(log_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
