@@ -262,79 +262,79 @@ with tab2:
 
             selected_debate_id = st.selectbox("Selecione um debate para ver os detalhes:", [d['debate_id'] for d in filtered_history])
 
-        if selected_debate_id:
-            with st.spinner(f"Carregando detalhes de {selected_debate_id}..."):
-                details = get_debate_details(selected_debate_id)
-                if details:
-                    # Header com métricas
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Consenso Atingido?", "✅ Sim" if details.get('consenso') else "❌ Não")
-                    with col2:
-                        st.metric("Rodadas", len(details.get('rodadas', [])))
-                    with col3:
-                        versao = details.get('versao', 'N/A')
-                        debug = "🐛 Debug" if details.get('debug_mode') else "🚀 Produção"
-                        st.metric("Versão / Modo", f"{versao} ({debug})")
-                    
-                    # Gráfico de Convergência
-                    st.write("---")
-                    st.subheader("📈 Evolução da Convergência Semântica")
-                    fig = plot_convergence_chart(details.get('rodadas', []))
-                    if fig:
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.info("Nenhum dado de convergência semântica disponível (fallback de votos usado).")
-                    
-                    # Solução Final
-                    if details.get('solucao_final'):
+            if selected_debate_id:
+                with st.spinner(f"Carregando detalhes de {selected_debate_id}..."):
+                    details = get_debate_details(selected_debate_id)
+                    if details:
+                        # Header com métricas
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Consenso Atingido?", "✅ Sim" if details.get('consenso') else "❌ Não")
+                        with col2:
+                            st.metric("Rodadas", len(details.get('rodadas', [])))
+                        with col3:
+                            versao = details.get('versao', 'N/A')
+                            debug = "🐛 Debug" if details.get('debug_mode') else "🚀 Produção"
+                            st.metric("Versão / Modo", f"{versao} ({debug})")
+                        
+                        # Gráfico de Convergência
                         st.write("---")
-                        st.subheader("💡 Solução Final / Síntese")
-                        with st.expander("Ver Consenso Completo", expanded=True):
-                            st.markdown(details['solucao_final'])
-                    
-                    # Comparativo Lado a Lado
-                    st.write("---")
-                    st.subheader("🔍 Análise Comparativa por Rodada")
-                    
-                    for i, rodada in enumerate(details.get('rodadas', [])):
-                        analise = rodada.get('analise_convergencia', {})
-                        metodo = analise.get('metodo', 'N/A')
-                        
-                        rodada_header = f"**Rodada {i+1}**"
-                        if metodo == 'semantico':
-                            score = analise.get('score', 0)
-                            rodada_header += f" - Convergência: `{score:.2%}`"
+                        st.subheader("📈 Evolução da Convergência Semântica")
+                        fig = plot_convergence_chart(details.get('rodadas', []))
+                        if fig:
+                            st.plotly_chart(fig, use_container_width=True)
                         else:
-                            votos = analise.get('votos', {})
-                            rodada_header += f" - Fallback por Votos: `{votos}`"
+                            st.info("Nenhum dado de convergência semântica disponível (fallback de votos usado).")
                         
-                        st.markdown(rodada_header)
+                        # Solução Final
+                        if details.get('solucao_final'):
+                            st.write("---")
+                            st.subheader("💡 Solução Final / Síntese")
+                            with st.expander("Ver Consenso Completo", expanded=True):
+                                st.markdown(details['solucao_final'])
                         
-                        with st.expander(f"Ver Comparativo de Respostas - Rodada {i+1}", expanded=(i==0)):
-                            render_side_by_side_comparison(rodada)
+                        # Comparativo Lado a Lado
+                        st.write("---")
+                        st.subheader("🔍 Análise Comparativa por Rodada")
                         
-                        st.write("")
-                    
-                    # Exportação
-                    st.write("---")
-                    st.subheader("💾 Exportar Debate")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        markdown_content = export_debate_markdown(details)
-                        st.download_button(
-                            label="📄 Download em Markdown",
-                            data=markdown_content,
-                            file_name=f"{selected_debate_id.replace('.json', '')}.md",
-                            mime="text/markdown"
-                        )
-                    with col2:
-                        import json
-                        json_content = json.dumps(details, indent=2, ensure_ascii=False)
-                        st.download_button(
-                            label="📊 Download em JSON",
-                            data=json_content,
-                            file_name=selected_debate_id,
-                            mime="application/json"
-                        )
+                        for i, rodada in enumerate(details.get('rodadas', [])):
+                            analise = rodada.get('analise_convergencia', {})
+                            metodo = analise.get('metodo', 'N/A')
+                            
+                            rodada_header = f"**Rodada {i+1}**"
+                            if metodo == 'semantico':
+                                score = analise.get('score', 0)
+                                rodada_header += f" - Convergência: `{score:.2%}`"
+                            else:
+                                votos = analise.get('votos', {})
+                                rodada_header += f" - Fallback por Votos: `{votos}`"
+                            
+                            st.markdown(rodada_header)
+                            
+                            with st.expander(f"Ver Comparativo de Respostas - Rodada {i+1}", expanded=(i==0)):
+                                render_side_by_side_comparison(rodada)
+                            
+                            st.write("")
+                        
+                        # Exportação
+                        st.write("---")
+                        st.subheader("💾 Exportar Debate")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            markdown_content = export_debate_markdown(details)
+                            st.download_button(
+                                label="📄 Download em Markdown",
+                                data=markdown_content,
+                                file_name=f"{selected_debate_id.replace('.json', '')}.md",
+                                mime="text/markdown"
+                            )
+                        with col2:
+                            import json
+                            json_content = json.dumps(details, indent=2, ensure_ascii=False)
+                            st.download_button(
+                                label="📊 Download em JSON",
+                                data=json_content,
+                                file_name=selected_debate_id,
+                                mime="application/json"
+                            )

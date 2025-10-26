@@ -15,6 +15,7 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from saci.saci_v2 import debate_saci_v2
@@ -75,6 +76,15 @@ app = FastAPI(
     version="3.1.0"
 )
 
+# Configurar CORS para permitir requisições do Streamlit
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permite todas as origens (para desenvolvimento)
+    allow_credentials=True,
+    allow_methods=["*"],  # Permite todos os métodos HTTP
+    allow_headers=["*"],  # Permite todos os headers
+)
+
 class DebateRequest(BaseModel):
     problema: str
     contexto: str
@@ -93,73 +103,42 @@ class WebSocketEvent(BaseModel):
     debate_id: str
     data: dict
 
-async def run_debate_background_ws(debate_id: str, problema: str, contexto: str, max_rodadas: int, debug_mode: bool):
-    """Wrapper assíncrono para rodar o debate em segundo plano com eventos WebSocket."""
-    print(f"Iniciando debate em background: {problema}")
-    
-    # Notifica início do debate
-    await manager.broadcast(debate_id, {
-        "event_type": "debate.started",
-        "debate_id": debate_id,
-        "data": {
-            "problema": problema,
-            "timestamp": datetime.now().isoformat(),
-            "max_rodadas": max_rodadas,
-            "debug_mode": debug_mode
-        }
-    })
-    
-    # Executa o debate (síncrono)
-    # Nota: debate_saci_v2 ainda é síncrono. Idealmente, deveria ser refatorado para assíncrono
-    # Por enquanto, executamos em thread separada para não bloquear o event loop
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        result = await asyncio.get_event_loop().run_in_executor(
-            executor,
-            debate_saci_v2,
-            problema,
-            contexto,
-            max_rodadas,
-            True,  # verbose
-            debug_mode
+def run_debate_background(problema: str, contexto: str, max_rodadas: int, debug_mode: bool):
+    """Wrapper síncrono simples para rodar o debate em segundo plano."""
+    print(f"[BACKEND] Iniciando debate: {problema[:50]}...")
+    try:
+        debate_saci_v2(
+            problema=problema,
+            contexto=contexto,
+            max_rodadas=max_rodadas,
+            verbose=True,
+            debug_mode=debug_mode
         )
-    
-    # Notifica conclusão do debate
-    await manager.broadcast(debate_id, {
-        "event_type": "debate.completed",
-        "debate_id": debate_id,
-        "data": {
-            "problema": problema,
-            "consenso": result if isinstance(result, bool) else True,
-            "timestamp": datetime.now().isoformat()
-        }
-    })
-    
-    print(f"Debate em background finalizado: {problema}")
+        print(f"[BACKEND] Debate finalizado com sucesso")
+    except Exception as e:
+        print(f"[BACKEND] ERRO no debate: {e}")
+        import traceback
+        traceback.print_exc()
 
 @app.post("/debates", status_code=202)
 async def create_debate(request: DebateRequest, background_tasks: BackgroundTasks):
     """
-    Inicia um novo debate em segundo plano com suporte a WebSocket.
-    Retorna o debate_id para que o cliente possa se conectar ao WebSocket.
+    Inicia um novo debate em segundo plano.
     """
-    # Gera um debate_id único baseado em timestamp
-    import time
-    debate_id = f"debate_{int(time.time())}"
+    print(f"[API] Recebida requisição de debate: {request.problema[:50]}...")
     
-    # Inicia debate em background com suporte a WebSocket
+    # Inicia debate em background
     background_tasks.add_task(
-        run_debate_background_ws,
-        debate_id,
+        run_debate_background,
         request.problema,
         request.contexto,
         request.max_rodadas,
         request.debug_mode
     )
+    
     return {
-        "message": "Debate iniciado em segundo plano. Conecte-se ao WebSocket para atualizações em tempo real.",
-        "debate_id": debate_id,
-        "websocket_url": f"/ws/debates/{debate_id}"
+        "message": "Debate iniciado em segundo plano. Monitore o histórico para ver o resultado.",
+        "status": "accepted"
     }
 
 @app.websocket("/ws/debates/{debate_id}")
